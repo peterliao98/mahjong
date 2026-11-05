@@ -114,6 +114,23 @@ button,select{font:inherit}
 .card .btn{background:#1f6141;color:#fff;padding:8px 18px;font-size:15px}
 .card .btn.alt{background:#ddd2b6;color:#222}
 .ok{color:#1d7a3a;font-weight:800}.bad{color:#c0392b;font-weight:800}
+/* 大廳與等待室 */
+.lobby{display:flex;flex-direction:column;gap:10px;margin:6px 0 4px}
+.fld{font-size:14px;font-weight:700}
+.card input{font:inherit;font-size:16px;padding:10px 12px;border:1px solid #d8cdb0;border-radius:8px;background:#fff;color:#222;width:100%;
+  -webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.card input:focus-visible,.card .btn:focus-visible{outline:3px solid #f2c14e;outline-offset:2px}
+.card .btn.big{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:12px 16px;font-size:17px}
+.card .btn.big small{font-weight:400;font-size:13px;opacity:.85}
+.card .btn:disabled{opacity:.5;cursor:default}
+.joinrow{display:flex;gap:8px}.joinrow input{flex:1;min-width:0}
+.lbmsg{min-height:22px;margin:0;color:#c0392b;font-size:14px}
+.card .code{font-size:44px;font-weight:800;letter-spacing:8px;margin:0 0 6px;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
+.seatlist{list-style:none;padding:0;margin:10px 0;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seatlist li{background:#efe6cf;border-radius:8px;padding:9px 12px;font-size:15px}
+.muted{color:#7a7363}
+.card details{margin-top:12px}.card summary{cursor:pointer;font-weight:700;font-size:15px}
+.cd{color:var(--gold);font-weight:800;margin-left:6px;font-variant-numeric:tabular-nums}
 
 /* 觸控螢幕：按鈕加大好點 */
 @media (pointer:coarse){
@@ -407,18 +424,27 @@ const AI = {
 
 /* ================= 遊戲狀態（封裝在閉包內） ================= */
 const $ = id => document.getElementById(id);
+const REL = ['你', '下家', '對家', '上家'];
+const TURN_MS = 30000, NEXT_MS = 60000;            // 連線時：每次決定最多等 30 秒，下一局最多等 60 秒
+const SOLO_SEATS = () => [{ type: 'local' }, { type: 'ai' }, { type: 'ai' }, { type: 'ai' }];
 const G = {
   scores: [START, START, START, START], dealer: 0, streak: 0, moves: 0, round: 0, roundWind: 0,
-  auto: false, hint: true, speed: 1, names: ['你', '下家', '對家', '上家'], lastFair: null, logs: []
+  auto: false, hint: true, speed: 1, lastFair: null, logs: [],
+  mode: 'solo',                 // solo：單人；host：連線的房主（連線的其他玩家不跑遊戲引擎）
+  seats: SOLO_SEATS(),          // 每個座位：local（這台）、remote（連線玩家）、ai（電腦）
+  seq: 0, result: null, over: null
 };
-let S = null, pending = null, selIdx = -1, curActions = [];
+let S = null, selIdx = -1, curActions = [];
+const prompts = new Map();      // 座位 → 正在等的真人決定
 const ABORT = { abort: true };
-const isHumanCtrl = p => p === 0 && !G.auto;
+const isHuman = p => G.seats[p].type !== 'ai';
 const seatWind = p => (p - G.dealer + 4) % 4;
 const wallLeft = () => S.b - S.f - KEEP;
+const nameOf = p => G.seats[p].name || REL[p];
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function deepFreeze(o) { if (o && typeof o === 'object') { Object.freeze(o); for (const k of Object.keys(o)) deepFreeze(o[k]); } return o; }
-// 給 AI 的視野：只有自己的手牌與公開資訊
+// 給 AI 的視野：只有自己的手牌與公開資訊（連線玩家收到的也是這一份）
 function viewFor(p) {
   return deepFreeze({
     seat: p,
@@ -432,22 +458,58 @@ function viewFor(p) {
   });
 }
 
-function addLog(s) { G.logs.unshift(s); if (G.logs.length > 80) G.logs.pop(); const el = $('log'); if (el) el.innerHTML = G.logs.map(x => `<div>${x}</div>`).join(''); }
+function addLog(s) { G.logs.unshift(s); if (G.logs.length > 80) G.logs.pop(); const el = $('log'); if (el) el.innerHTML = G.logs.map(x => `<div>${esc(x)}</div>`).join(''); }
 async function sleep(ms) { const st = S; await new Promise(r => setTimeout(r, ms * G.speed)); if (st && st.dead) throw ABORT; }
-function waitHuman(kind, data) {
+
+function aiDecide(p, kind, data) {
+  if (kind === 'next') return { type: 'next' };
+  const v = viewFor(p);
+  return kind === 'turn' ? AI.turn(v, data) : AI.claim(v, data.tile, data.opts);
+}
+// 連線玩家送來的動作要先檢查合不合法，不合法就交給電腦決定
+function validAct(p, kind, data, a) {
+  if (!a || typeof a !== 'object') return false;
+  if (kind === 'next') return a.type === 'next';
+  if (kind === 'turn') {
+    if (a.type === 'tsumo') return !!data.tsumo;
+    if (a.type === 'ankong') return data.ankong.includes(a.tile);
+    if (a.type === 'kakan') return data.kakan.includes(a.tile);
+    if (a.type === 'discard') return S.players[p].hand.includes(a.tile);
+    return false;
+  }
+  const o = data.opts;
+  if (a.type === 'pass') return true;
+  if (a.type === 'win') return !!o.win;
+  if (a.type === 'pung') return !!o.pung;
+  if (a.type === 'kong') return !!o.kong;
+  if (a.type === 'chow') return Array.isArray(a.use) && o.chow.some(u => u[0] === a.use[0] && u[1] === a.use[1]);
+  return false;
+}
+// 等某位真人玩家做決定（這台的玩家、或連線玩家）。連線時超過時間由電腦代打一手
+function waitHuman(p, kind, data) {
   const st = S;
   return new Promise((res, rej) => {
-    pending = { kind, data, res: v => { pending = null; selIdx = -1; if (st.dead || v == null) rej(ABORT); else res(v); } };
+    const timeout = G.mode === 'host' ? (kind === 'next' ? NEXT_MS : TURN_MS) : 0;
+    const pr = {
+      p, kind, data, seq: ++G.seq, deadline: timeout ? NET.now() + timeout : 0, timers: [],
+      res: v => {
+        if (pr.done) return;
+        pr.done = true; pr.timers.forEach(clearTimeout);
+        if (prompts.get(p) === pr) prompts.delete(p);
+        if (p === 0) selIdx = -1;
+        if (st.dead || v == null) rej(ABORT); else res(v);
+        render();
+      },
+      ai: () => pr.res(aiDecide(p, kind, data))
+    };
+    prompts.set(p, pr);
+    if (timeout) pr.timers.push(setTimeout(pr.ai, timeout));
+    if (p === 0 && G.auto && kind !== 'next') pr.timers.push(setTimeout(pr.ai, 300 * G.speed));
+    if (G.seats[p].type === 'remote') NET.promptRemote(pr);
     render();
-    if (G.auto) autoResolve();
   });
 }
-function autoResolve() {
-  if (!pending) return;
-  const v = viewFor(0);
-  if (pending.kind === 'turn') pending.res(AI.turn(v, pending.data));
-  else if (pending.kind === 'claim') pending.res(AI.claim(v, pending.data.tile, pending.data.opts));
-}
+function autoResolve() { const pr = prompts.get(0); if (pr && pr.kind !== 'next') pr.ai(); }
 
 /* ---------- 摸牌（每一張都記錄位置，供局後驗證） ---------- */
 function takeFront() { const i = S.f++; S.drawLog.push(['F', i, S.wall[i]]); return S.wall[i]; }
@@ -457,7 +519,7 @@ function drawFor(p, fromBack) {
   if (wallLeft() <= 0) return null;
   let t = fromBack ? takeBack() : takeFront();
   while (t >= 34) {
-    P.flowers.push(t); addLog(`${G.names[p]} 補花：${tName(t)}`);
+    P.flowers.push(t); addLog(`${nameOf(p)} 補花：${tName(t)}`);
     if (wallLeft() <= 0) return null;
     t = takeBack();
   }
@@ -485,7 +547,7 @@ async function playRound() {
     wall, f: 0, b: wall.length, salt, commit, drawLog: [], dead: false, reveal: false, cur: G.dealer, last: null, drawn: null,
     players: [0, 1, 2, 3].map(() => ({ hand: [], melds: [], flowers: [], discards: [] }))
   };
-  addLog(`── 第 ${G.round + 1} 局（${WINDS[G.roundWind]}風圈），莊家：${G.names[G.dealer]}。牌山承諾 SHA-256：${commit.slice(0, 16)}…`);
+  addLog(`── 第 ${G.round + 1} 局（${WINDS[G.roundWind]}風圈），莊家：${nameOf(G.dealer)}。牌山承諾 SHA-256：${commit.slice(0, 16)}…`);
   for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
     const p = (G.dealer + k) % 4; for (let j = 0; j < 4; j++) S.players[p].hand.push(takeFront());
   }
@@ -511,8 +573,8 @@ async function playRound() {
     }
     const haidi = wallLeft() <= 0;
     let act;
-    if (isHumanCtrl(cur)) act = await waitHuman('turn', opts);
-    else { await sleep(cur === 0 ? 350 : 650); act = AI.turn(viewFor(cur), opts); }
+    if (isHuman(cur)) act = await waitHuman(cur, 'turn', opts);
+    else { await sleep(650); act = AI.turn(viewFor(cur), opts); }
 
     if (act.type === 'tsumo') {
       const wt = S.drawn != null ? S.drawn : P.hand[P.hand.length - 1];
@@ -520,8 +582,8 @@ async function playRound() {
     }
     if (act.type === 'ankong' || act.type === 'kakan') {
       const t = act.tile;
-      if (act.type === 'ankong') { for (let i = 0; i < 4; i++) removeOne(P.hand, t); P.melds.push({ type: 'ankong', tiles: [t, t, t, t] }); addLog(`${G.names[cur]} 暗槓`); }
-      else { removeOne(P.hand, t); const m = P.melds.find(m => m.type === 'pung' && m.tiles[0] === t); m.type = 'kong'; m.tiles.push(t); addLog(`${G.names[cur]} 加槓 ${tName(t)}`); }
+      if (act.type === 'ankong') { for (let i = 0; i < 4; i++) removeOne(P.hand, t); P.melds.push({ type: 'ankong', tiles: [t, t, t, t] }); addLog(`${nameOf(cur)} 暗槓`); }
+      else { removeOne(P.hand, t); const m = P.melds.find(m => m.type === 'pung' && m.tiles[0] === t); m.type = 'kong'; m.tiles.push(t); addLog(`${nameOf(cur)} 加槓 ${tName(t)}`); }
       S.drawn = null; render(); await sleep(450);
       const d = drawFor(cur, true); if (d === null) return { type: 'draw' };
       S.drawn = d; kongDraw = true; canSelf = true; needDraw = false;
@@ -532,7 +594,7 @@ async function playRound() {
     removeOne(P.hand, t);
     P.discards.push({ tile: t, called: false });
     S.last = { p: cur, i: P.discards.length - 1 }; S.drawn = null;
-    addLog(`${G.names[cur]} 打出 ${tName(t)}`);
+    addLog(`${nameOf(cur)} 打出 ${tName(t)}`);
     render(); await sleep(300);
 
     const claim = await resolveClaims(cur, t);
@@ -540,9 +602,9 @@ async function playRound() {
       if (claim.type === 'win') return settleWin(claim.p, cur, t, { selfDraw: false, haidi });
       const q = claim.p, Q = S.players[q];
       P.discards[S.last.i].called = true; S.last = null;
-      if (claim.type === 'pung') { removeOne(Q.hand, t); removeOne(Q.hand, t); Q.melds.push({ type: 'pung', tiles: [t, t, t], from: cur }); addLog(`${G.names[q]} 碰 ${tName(t)}`); }
-      else if (claim.type === 'kong') { for (let i = 0; i < 3; i++) removeOne(Q.hand, t); Q.melds.push({ type: 'kong', tiles: [t, t, t, t], from: cur }); addLog(`${G.names[q]} 明槓 ${tName(t)}`); }
-      else { for (const x of claim.use) removeOne(Q.hand, x); Q.melds.push({ type: 'chow', tiles: [...claim.use, t].sort(byNum), from: cur }); addLog(`${G.names[q]} 吃 ${tName(t)}`); }
+      if (claim.type === 'pung') { removeOne(Q.hand, t); removeOne(Q.hand, t); Q.melds.push({ type: 'pung', tiles: [t, t, t], from: cur }); addLog(`${nameOf(q)} 碰 ${tName(t)}`); }
+      else if (claim.type === 'kong') { for (let i = 0; i < 3; i++) removeOne(Q.hand, t); Q.melds.push({ type: 'kong', tiles: [t, t, t, t], from: cur }); addLog(`${nameOf(q)} 明槓 ${tName(t)}`); }
+      else { for (const x of claim.use) removeOne(Q.hand, x); Q.melds.push({ type: 'chow', tiles: [...claim.use, t].sort(byNum), from: cur }); addLog(`${nameOf(q)} 吃 ${tName(t)}`); }
       cur = q; S.cur = q; render(); await sleep(400);
       if (claim.type === 'kong') {
         const d = drawFor(q, true); if (d === null) return { type: 'draw' };
@@ -555,7 +617,7 @@ async function playRound() {
   }
 }
 
-// 打出的牌：胡 > 碰/槓 > 吃（截胡：按出牌順序最近者優先）
+// 打出的牌：胡 > 碰/槓 > 吃（截胡：按出牌順序最近者優先）。可以吃碰胡的真人玩家同時詢問
 async function resolveClaims(from, t) {
   const info = [1, 2, 3].map(k => (from + k) % 4).map(p => {
     const P = S.players[p], N = 5 - P.melds.length, c = counts(P.hand);
@@ -568,32 +630,22 @@ async function resolveClaims(from, t) {
     }
     return o;
   });
-  let hc = null, asked = false;
-  const ask = async o => { asked = true; hc = await waitHuman('claim', { tile: t, from, opts: o }); return hc; };
+  const asks = info.filter(o => isHuman(o.p) && (o.win || o.pung || o.kong || o.chow.length));
+  const hc = new Map();
+  await Promise.all(asks.map(async o => { hc.set(o.p, await waitHuman(o.p, 'claim', { tile: t, from, opts: o })); }));
+  const dec = (o, stage) => isHuman(o.p) ? hc.get(o.p) : AI.claim(viewFor(o.p), t,
+    stage === 'win' ? o : stage === 'pung' ? { ...o, win: false, chow: [] } : { ...o, win: false, pung: false, kong: false });
   for (const o of info) {
     if (!o.win) continue;
-    if (isHumanCtrl(o.p)) { await ask(o); if (hc.type === 'win') return { type: 'win', p: o.p }; }
-    else if (AI.claim(viewFor(o.p), t, o).type === 'win') return { type: 'win', p: o.p };
+    const d = dec(o, 'win'); if (d && d.type === 'win') return { type: 'win', p: o.p };
   }
   for (const o of info) {
     if (!o.pung && !o.kong) continue;
-    if (isHumanCtrl(o.p)) {
-      if (!asked) await ask(o);
-      if (hc && (hc.type === 'pung' || hc.type === 'kong')) return { type: hc.type, p: o.p };
-    } else {
-      const d = AI.claim(viewFor(o.p), t, { ...o, win: false, chow: [] });
-      if (d.type === 'pung' || d.type === 'kong') return { type: d.type, p: o.p };
-    }
+    const d = dec(o, 'pung'); if (d && (d.type === 'pung' || d.type === 'kong')) return { type: d.type, p: o.p };
   }
   for (const o of info) {
     if (!o.chow.length) continue;
-    if (isHumanCtrl(o.p)) {
-      if (!asked) await ask(o);
-      if (hc && hc.type === 'chow') return { type: 'chow', p: o.p, use: hc.use };
-    } else {
-      const d = AI.claim(viewFor(o.p), t, { ...o, win: false, pung: false, kong: false });
-      if (d.type === 'chow') return { type: 'chow', p: o.p, use: d.use };
-    }
+    const d = dec(o, 'chow'); if (d && d.type === 'chow') return { type: 'chow', p: o.p, use: d.use };
   }
   return null;
 }
@@ -672,14 +724,14 @@ function settleWin(p, from, tile, flags) {
     pays[q] -= amt; pays[p] += amt; detail.push({ q, tai, amt });
   }
   for (let i = 0; i < 4; i++) G.scores[i] += pays[i];
-  addLog(flags.selfDraw ? `${G.names[p]} 自摸 ${tName(tile)}！` : `${G.names[p]} 胡 ${G.names[from]} 的 ${tName(tile)}！`);
+  addLog(flags.selfDraw ? `${nameOf(p)} 自摸 ${tName(tile)}！` : `${nameOf(p)} 胡 ${nameOf(from)} 的 ${tName(tile)}！`);
   return { type: 'win', p, from, tile, sc, pays, detail, selfDraw: flags.selfDraw };
 }
 
 /* ================= 畫面 ================= */
-// 牌面用拼圖的某一格：第 k 張在第 k%9 欄、第 floor(k/9) 列
 function tileHTML(t, cls = '') {
-  if (t == null) return `<div class="tile back ${cls}"></div>`;
+  t = t == null ? -1 : +t;
+  if (!(t >= 0 && t < 42)) return `<div class="tile back ${cls}"></div>`;
   const x = (t % 9) * 12.5, y = ((t / 9) | 0) * 25;
   return `<div class="tile ${cls}" style="background-position:${x}% ${y}%" title="${tName(t)}" role="img" aria-label="${tName(t)}"></div>`;
 }
@@ -687,76 +739,104 @@ function meldHTML(m, showAn, cls) {
   const ts = m.type === 'ankong' ? (showAn ? [null, m.tiles[0], m.tiles[0], null] : [null, null, null, null]) : m.tiles;
   return `<div class="meld">${ts.map(t => tileHTML(t, cls)).join('')}</div>`;
 }
-function seatHead(p) {
-  return `<div class="head"><span class="wind">${WINDS[seatWind(p)]}</span><b>${G.names[p]}</b>` +
-    (p === G.dealer ? `<span class="dealer">莊${G.streak ? '·連' + G.streak : ''}</span>` : '') +
-    `<span class="score">${G.scores[p].toLocaleString()}</span></div>`;
+
+/* 畫面資料：某個座位看得到的一切（自己的手牌＋桌面公開資訊）。
+   單人、房主、連線玩家都用同一份資料來畫，連線玩家收到的就是這份。 */
+function buildDisplay(me) {
+  const pr = prompts.get(me);
+  return {
+    me, mode: G.mode, room: NET.code || null,
+    v: { ...viewFor(me), handCounts: S.players.map(P => P.hand.length) },
+    nick: G.seats.map(s => s.type === 'ai' ? null : (s.name || null)),
+    scores: G.scores.slice(), dealer: G.dealer, streak: G.streak, round: G.round, roundWind: G.roundWind,
+    cur: S.cur, last: S.last, drawn: S.cur === me ? S.drawn : null, commit: S.commit,
+    reveal: S.reveal ? S.players.map(P => ({ hand: P.hand.slice(), melds: P.melds.map(m => ({ type: m.type, tiles: m.tiles.slice() })) })) : null,
+    prompt: pr ? { seq: pr.seq, kind: pr.kind, data: pr.data, deadline: pr.deadline } : null,
+    result: G.result, over: G.over
+  };
 }
-function renderOpp(p) {
-  const P = S.players[p], el = $('seat' + p);
-  el.className = 'seat s' + p + (S.cur === p && !S.reveal ? ' active' : '');
-  const hidden = S.reveal ? P.hand.map(t => tileHTML(t, 'xs')).join('') : P.hand.map(() => tileHTML(null, 'xs')).join('');
-  el.innerHTML = seatHead(p) +
-    `<div class="row">${P.flowers.map(f => tileHTML(f, 'xs')).join('')}</div>` +
-    `<div class="row">${P.melds.map(m => meldHTML(m, S.reveal, 'xs')).join('')}</div>` +
-    `<div class="row">${hidden}</div>`;
+// 從 me 的角度稱呼座位 q
+function dispName(D, q) {
+  if (q === D.me) return '你';
+  const rel = REL[(q - D.me + 4) % 4];
+  if (D.nick[q]) return D.nick[q];
+  return D.mode === 'solo' ? rel : '電腦·' + rel;
 }
-function renderRivers() {
-  for (let p = 0; p < 4; p++) {
-    $('river' + p).innerHTML = S.players[p].discards.map((d, i) => {
-      const last = S.last && S.last.p === p && S.last.i === i;
+function seatHead(D, q) {
+  return `<div class="head"><span class="wind">${WINDS[(q - D.dealer + 4) % 4]}</span><b>${esc(dispName(D, q))}</b>` +
+    (q === D.dealer ? `<span class="dealer">莊${D.streak ? '·連' + (+D.streak) : ''}</span>` : '') +
+    `<span class="score">${(+D.scores[q]).toLocaleString()}</span></div>`;
+}
+function renderOpp(D, q) {
+  const k = (q - D.me + 4) % 4, el = $('seat' + k);
+  el.className = 'seat s' + k + (D.cur === q && !D.reveal ? ' active' : '');
+  const n = Math.min(20, +D.v.handCounts[q] || 0);
+  const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t, 'xs')).join('') : Array.from({ length: n }, () => tileHTML(null, 'xs')).join('');
+  const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q];
+  el.innerHTML = seatHead(D, q) +
+    `<div class="row">${D.v.flowers[q].map(f => tileHTML(f, 'xs')).join('')}</div>` +
+    `<div class="row">${melds.map(m => meldHTML(m, !!D.reveal, 'xs')).join('')}</div>` +
+    `<div class="row">${hand}</div>`;
+}
+function renderRivers(D) {
+  for (let q = 0; q < 4; q++) {
+    $('river' + ((q - D.me + 4) % 4)).innerHTML = D.v.discards[q].map((d, i) => {
+      const last = D.last && D.last.p === q && D.last.i === i;
       return tileHTML(d.tile, 'sm' + (d.called ? ' taken' : '') + (last ? ' last' : ''));
     }).join('');
   }
-  $('mid').innerHTML = `<div>${WINDS[G.roundWind]}風圈 · 第 ${G.round + 1} 局</div>` +
-    `<div class="big">剩 ${Math.max(0, wallLeft())} 張</div>` +
-    `<div>輪到：${G.names[S.cur]}</div>`;
+  $('mid').innerHTML = `<div>${WINDS[D.roundWind]}風圈 · 第 ${+D.round + 1} 局</div>` +
+    `<div class="big">剩 ${Math.max(0, +D.v.wallLeft)} 張</div>` +
+    (D.cur >= 0 ? `<div>輪到：${esc(dispName(D, D.cur))}</div>` : '');
 }
-function humanDisplay() {
-  const P = S.players[0]; const disp = P.hand.slice(); let drawnIdx = -1;
-  if (S.cur === 0 && S.drawn != null && pending && pending.kind === 'turn' && disp.includes(S.drawn)) {
-    disp.splice(disp.lastIndexOf(S.drawn), 1); disp.push(S.drawn); drawnIdx = disp.length - 1;
+function humanDisplay(D) {
+  const disp = D.v.hand.slice(); let drawnIdx = -1;
+  if (D.cur === D.me && D.drawn != null && D.prompt && D.prompt.kind === 'turn' && disp.includes(D.drawn)) {
+    disp.splice(disp.lastIndexOf(D.drawn), 1); disp.push(D.drawn); drawnIdx = disp.length - 1;
   }
   return { disp, drawnIdx };
 }
 function waitsHTML(ws, un) {
   return ws.map(t => `${tileHTML(t)}<span>${un[t]}張</span>`).join(' ');
 }
-function renderMe() {
-  const P = S.players[0], el = $('seat0');
-  el.className = 'me' + (S.cur === 0 && !S.reveal ? ' active' : '');
-  const { disp, drawnIdx } = humanDisplay();
-  const canDiscard = pending && pending.kind === 'turn';
+function renderMe(D) {
+  const el = $('seat0'), me = D.me;
+  const P = { hand: D.v.hand, melds: D.v.melds[me], flowers: D.v.flowers[me] };
+  el.className = 'me' + (D.cur === me && !D.reveal ? ' active' : '');
+  const { disp, drawnIdx } = humanDisplay(D);
+  const pr = D.prompt && D.prompt.kind !== 'next' ? D.prompt : null;
+  const canDiscard = pr && pr.kind === 'turn';
   const N = 5 - P.melds.length;
-  const un = AI.unseen(viewFor(0));
+  const un = AI.unseen(D.v);
   const held = counts([...P.hand, ...P.melds.flatMap(m => m.tiles)]);
   // 打出後可聽牌的標記
   const tpSet = new Set();
   if (canDiscard && G.hint) for (const t of new Set(P.hand)) { const h = P.hand.slice(); removeOne(h, t); if (waitsOf(h, held).length) tpSet.add(t); }
 
   curActions = []; let msg = '';
-  if (pending && pending.kind === 'turn') {
-    const o = pending.data;
+  if (canDiscard) {
+    const o = pr.data;
     if (o.tsumo) curActions.push({ label: '自摸', cls: 'win', v: { type: 'tsumo' } });
     for (const t of o.ankong) curActions.push({ label: '暗槓 ' + tileHTML(t), cls: 'kong', v: { type: 'ankong', tile: t } });
     for (const t of o.kakan) curActions.push({ label: '加槓 ' + tileHTML(t), cls: 'kong', v: { type: 'kakan', tile: t } });
-    if (selIdx >= 0) curActions.push({ label: '打出 ' + tileHTML(disp[selIdx]), cls: '', v: { type: 'discard', tile: disp[selIdx] } });
+    if (selIdx >= 0 && selIdx < disp.length) curActions.push({ label: '打出 ' + tileHTML(disp[selIdx]), cls: '', v: { type: 'discard', tile: disp[selIdx] } });
     msg = selIdx >= 0 ? '再點一次同一張牌也可打出' : '輪到你：點一張牌選擇，再點一次打出';
-  } else if (pending && pending.kind === 'claim') {
-    const { tile, from, opts } = pending.data;
-    msg = `${G.names[from]} 打出 ${tileHTML(tile)}`;
+  } else if (pr && pr.kind === 'claim') {
+    const { tile, from, opts } = pr.data;
+    msg = `${esc(dispName(D, from))} 打出 ${tileHTML(tile)}`;
     if (opts.win) curActions.push({ label: '胡', cls: 'win', v: { type: 'win' } });
     if (opts.kong) curActions.push({ label: '槓', cls: 'kong', v: { type: 'kong' } });
     if (opts.pung) curActions.push({ label: '碰', cls: 'pung', v: { type: 'pung' } });
     for (const use of opts.chow) curActions.push({ label: '吃 ' + [...use, tile].sort(byNum).map(x => tileHTML(x)).join(''), cls: 'chow', v: { type: 'chow', use } });
     curActions.push({ label: '過', cls: 'pass', v: { type: 'pass' } });
-  } else if (!S.reveal) {
-    msg = S.cur === 0 ? '…' : `等待 ${G.names[S.cur]}…`;
+  } else if (!D.reveal) {
+    msg = D.cur === me ? '…' : `等待 ${esc(dispName(D, D.cur))}…`;
   }
+  if (pr && pr.deadline) msg += ` <span class="cd" data-dl="${+pr.deadline}"></span>`;
 
   let hint = '';
-  if (G.hint && !S.reveal) {
-    if (canDiscard && selIdx >= 0) {
+  if (G.hint && !D.reveal) {
+    if (canDiscard && selIdx >= 0 && selIdx < disp.length) {
       const h = P.hand.slice(); removeOne(h, disp[selIdx]);
       const ws = waitsOf(h, held);
       hint = ws.length ? `打出 ${tName(disp[selIdx])} 後聽：${waitsHTML(ws, un)}` : `打出 ${tName(disp[selIdx])} 後還差 ${shantenC(counts(h), N) + 1} 步聽牌`;
@@ -766,27 +846,48 @@ function renderMe() {
     } else if (canDiscard) hint = '金色圓點＝打出後可以聽牌';
   }
 
-  el.innerHTML = seatHead(0) +
+  el.innerHTML = seatHead(D, me) +
     `<div class="row">${P.flowers.map(f => tileHTML(f, 'sm')).join('')}${P.melds.map(m => meldHTML(m, true, 'sm')).join('')}</div>` +
     `<div class="actions"><span class="msg">${msg}</span>${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}</div>` +
     `<div class="hand ${canDiscard ? 'can' : ''}">${disp.map((t, i) =>
       tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '')).replace('<div class="tile', `<div data-i="${i}" class="tile`)).join('')}</div>` +
     `<div class="hint">${hint}</div>`;
+  tickCountdown();
+}
+let lastD = null, lastSeq = null;
+function draw(D) {
+  lastD = D;
+  const seq = D.prompt ? D.prompt.seq : null;
+  if (seq !== lastSeq) { selIdx = -1; lastSeq = seq; }
+  $('meta').textContent = `${WINDS[D.roundWind]}風圈 · 莊家 ${dispName(D, D.dealer)}${D.streak ? '（連' + D.streak + '）' : ''} · 底 ${BASE} / 每台 ${PER_TAI}` +
+    (D.room ? ` · 房號 ${D.room}` : '') + (NET.hostAway ? ' · 房主連線中斷，等待中…' : '');
+  for (let k = 1; k < 4; k++) renderOpp(D, (D.me + k) % 4);
+  renderRivers(D); renderMe(D);
 }
 function render() {
-  if (!S) return;
-  $('meta').textContent = `${WINDS[G.roundWind]}風圈 · 莊家 ${G.names[G.dealer]}${G.streak ? '（連' + G.streak + '）' : ''} · 底 ${BASE} / 每台 ${PER_TAI}`;
-  renderOpp(1); renderOpp(2); renderOpp(3); renderRivers(); renderMe();
+  if (NET.role === 'client' || !S) return;   // 連線玩家的畫面由房主送來
+  draw(buildDisplay(0));
+  if (G.mode === 'host') NET.sync();
 }
+function tickCountdown() {
+  document.querySelectorAll('.cd[data-dl]').forEach(el => { el.textContent = Math.max(0, Math.ceil((+el.dataset.dl - NET.now()) / 1000)) + ' 秒'; });
+}
+setInterval(tickCountdown, 500);
 
+// 回覆目前的決定：這台的玩家直接交給引擎；連線玩家送給房主
+function respond(a) {
+  if (!lastD || !lastD.prompt) return;
+  if (NET.role === 'client') NET.send(lastD.prompt.seq, a);
+  else { const pr = prompts.get(0); if (pr) pr.res(a); }
+}
 $('seat0').addEventListener('click', e => {
   const b = e.target.closest('[data-a]');
-  if (b && pending) { const a = curActions[+b.dataset.a]; if (a) pending.res(a.v); return; }
+  if (b) { const a = curActions[+b.dataset.a]; if (a) respond(a.v); return; }
   const t = e.target.closest('[data-i]');
-  if (t && pending && pending.kind === 'turn') {
+  if (t && lastD && lastD.prompt && lastD.prompt.kind === 'turn') {
     const i = +t.dataset.i;
-    if (i === selIdx) { const { disp } = humanDisplay(); pending.res({ type: 'discard', tile: disp[i] }); }
-    else { selIdx = i; render(); }
+    if (i === selIdx) { const { disp } = humanDisplay(lastD); respond({ type: 'discard', tile: disp[i] }); }
+    else { selIdx = i; draw(lastD); }
   }
 });
 
@@ -822,39 +923,67 @@ function fairBlock(F) {
 function bindFairButtons() {
   const b = $('modalCard').querySelector('[data-verify]'); if (!b) return;
   b.onclick = () => {
-    const r = verifyRound(G.lastFair), ok = s => s ? '<span class="ok">✓ 通過</span>' : '<span class="bad">✗ 不符</span>';
+    const r = verifyRound(currentFair()), ok = s => s ? '<span class="ok">✓ 通過</span>' : '<span class="bad">✗ 不符</span>';
     $('modalCard').querySelector('[data-vres]').innerHTML = `雜湊相符 ${ok(r.okHash)}　牌組完整 ${ok(r.okSet)}　摸牌順序與牌山一致 ${ok(r.okDraw)}`;
   };
 }
-function handBlock(p, winTile) {
-  const P = S.players[p]; const h = P.hand.slice();
-  let tail = '';
-  if (winTile != null) { removeOne(h, winTile); tail = tileHTML(winTile, 'wintile'); }
-  return `<div class="handrow">${P.flowers.map(f => tileHTML(f)).join('')}${P.flowers.length ? '&nbsp;' : ''}${P.melds.map(m => meldHTML(m, true, '')).join('')}${h.map(t => tileHTML(t)).join('')}&nbsp;${tail}</div>`;
+function handBlockData(h, winTile) {
+  const hand = h.hand.slice(); let tail = '';
+  if (winTile != null) { const i = hand.indexOf(winTile); if (i >= 0) hand.splice(i, 1); tail = tileHTML(winTile, 'wintile'); }
+  return `<div class="handrow">${h.flowers.map(f => tileHTML(f)).join('')}${h.flowers.length ? '&nbsp;' : ''}${h.melds.map(m => meldHTML(m, true, '')).join('')}${hand.map(t => tileHTML(t)).join('')}&nbsp;${tail}</div>`;
+}
+// 結算資料（不含畫面）。房主算好送給每個人，各自用自己的角度顯示
+function resultData(res) {
+  const R = {
+    draw: res.type === 'draw', scores: G.scores.slice(),
+    hands: S.players.map(P => ({ flowers: P.flowers.slice(), melds: P.melds.map(m => ({ type: m.type, tiles: m.tiles.slice() })), hand: P.hand.slice() }))
+  };
+  if (!R.draw) {
+    const { p, from, tile, sc, pays, detail, selfDraw } = res;
+    const dRel = p === G.dealer || detail.some(d => d.q === G.dealer);
+    Object.assign(R, {
+      p, from, tile, selfDraw, pays, detail, items: sc.items, total: sc.total,
+      dealerItems: dRel ? sc.dealerItems : [], dealerTai: dRel ? sc.dealerTai : 0
+    });
+  }
+  return R;
+}
+function resultTitle(R, D) {
+  if (R.draw) return '流局';
+  return '🀄 ' + (R.selfDraw ? `${esc(dispName(D, R.p))} 自摸！` : `${esc(dispName(D, R.p))} 胡牌！（${esc(dispName(D, R.from))} 放槍）`);
+}
+function resultHTML(R, D) {
+  let html;
+  if (R.draw) html = `<p>牌摸完了，沒有人胡牌。莊家連莊。</p>`;
+  else {
+    const rows = R.items.map(([n, v]) => `<tr><td>${esc(n)}</td><td class="num">${+v} 台</td></tr>`).join('') || '<tr><td>屁胡（無台）</td><td class="num">0 台</td></tr>';
+    const drows = R.dealerItems.map(([n, v]) => `<tr><td>${esc(n)}<small>（只算與莊家之間）</small></td><td class="num">${+v} 台</td></tr>`).join('');
+    html = `${handBlockData(R.hands[R.p], R.tile)}
+      <h3>台數</h3><table>${rows}${drows}<tr><th>合計</th><th class="num">${+R.total} 台${R.dealerTai ? `（＋莊 ${+R.dealerTai}）` : ''}</th></tr></table>
+      <h3>付款</h3><table>${R.detail.map(d => `<tr><td>${esc(dispName(D, d.q))} 付</td><td class="num">${BASE} + ${+d.tai} 台 × ${PER_TAI} = ${(+d.amt).toLocaleString()}</td></tr>`).join('')}</table>
+      <h3>分數</h3><table>${[0, 1, 2, 3].map(k => (D.me + k) % 4).map(i => `<tr><td>${esc(dispName(D, i))}</td><td class="num ${R.pays[i] > 0 ? 'pos' : R.pays[i] < 0 ? 'neg' : ''}">${R.pays[i] > 0 ? '+' : ''}${(+R.pays[i]).toLocaleString()}</td><td class="num">${(+R.scores[i]).toLocaleString()}</td></tr>`).join('')}</table>`;
+  }
+  const others = [0, 1, 2, 3].map(k => (D.me + k) % 4).filter(i => R.draw || i !== R.p);
+  return html + `<h3>其他人的牌</h3>${others.map(i => `<div><b>${esc(dispName(D, i))}</b>${handBlockData(R.hands[i], null)}</div>`).join('')}`;
+}
+function gameOverHTML(O, D) {
+  return `<h2>遊戲結束</h2><p>${esc(O.reason)}</p><table>${O.rank.map((i, k) => `<tr><td>第 ${k + 1} 名</td><td>${esc(dispName(D, i))}</td><td class="num">${(+O.scores[i]).toLocaleString()}</td></tr>`).join('')}</table>`;
 }
 async function showResult(res) {
   S.reveal = true; S.cur = -1;
   G.lastFair = { round: G.round + 1, commit: S.commit, salt: S.salt, wall: S.wall.slice(), drawLog: S.drawLog.slice() };
+  if (res.type === 'draw') addLog('流局（荒莊），莊家連莊。');
+  G.result = resultData(res);
   render();
-  let html, title;
-  if (res.type === 'draw') {
-    addLog('流局（荒莊），莊家連莊。');
-    title = '流局';
-    html = `<p>牌摸完了，沒有人胡牌。莊家連莊。</p>`;
-  } else {
-    const { p, from, tile, sc, pays, detail, selfDraw } = res;
-    title = '🀄 ' + (selfDraw ? `${G.names[p]} 自摸！` : `${G.names[p]} 胡牌！（${G.names[from]} 放槍）`);
-    const rows = sc.items.map(([n, v]) => `<tr><td>${n}</td><td class="num">${v} 台</td></tr>`).join('') || '<tr><td>屁胡（無台）</td><td class="num">0 台</td></tr>';
-    const dRel = p === G.dealer || detail.some(d => d.q === G.dealer);
-    if (!dRel) sc.dealerItems = [], sc.dealerTai = 0;
-    const drows = sc.dealerItems.map(([n, v]) => `<tr><td>${n}<small>（只算與莊家之間）</small></td><td class="num">${v} 台</td></tr>`).join('');
-    html = `${handBlock(p, tile)}
-      <h3>台數</h3><table>${rows}${drows}<tr><th>合計</th><th class="num">${sc.total} 台${sc.dealerTai ? `（＋莊 ${sc.dealerTai}）` : ''}</th></tr></table>
-      <h3>付款</h3><table>${detail.map(d => `<tr><td>${G.names[d.q]} 付</td><td class="num">${BASE} + ${d.tai} 台 × ${PER_TAI} = ${d.amt.toLocaleString()}</td></tr>`).join('')}</table>
-      <h3>分數</h3><table>${[0, 1, 2, 3].map(i => `<tr><td>${G.names[i]}</td><td class="num ${pays[i] > 0 ? 'pos' : pays[i] < 0 ? 'neg' : ''}">${pays[i] > 0 ? '+' : ''}${pays[i].toLocaleString()}</td><td class="num">${G.scores[i].toLocaleString()}</td></tr>`).join('')}</table>`;
-  }
-  html += `<h3>其他人的牌</h3>${[0, 1, 2, 3].filter(i => res.type === 'draw' || i !== res.p).map(i => `<div><b>${G.names[i]}</b>${handBlock(i, null)}</div>`).join('')}`;
-  await waitModal(html, [{ label: '下一局', v: 1 }], title);
+  const D = buildDisplay(0);
+  // 連線玩家各自按「下一局」，全部按了（或超過時間）才開始
+  const remotes = [0, 1, 2, 3].filter(p => G.seats[p].type === 'remote');
+  const others = Promise.all(remotes.map(p => waitHuman(p, 'next', {})));
+  await waitModal(resultHTML(G.result, D), [{ label: '下一局', v: 1 }], resultTitle(G.result, D));
+  if (remotes.some(p => prompts.has(p))) modal(`<h2>等待其他玩家…</h2><p>大家都按「下一局」後就會開始。</p>`);
+  await others;
+  closeModal();
+  G.result = null;
 }
 function advance(res) {
   G.round++;
@@ -863,9 +992,13 @@ function advance(res) {
 }
 async function showGameOver(reason) {
   const rank = [0, 1, 2, 3].sort((a, b) => G.scores[b] - G.scores[a]);
-  await waitModal(`<h2>遊戲結束</h2><p>${reason}</p><table>${rank.map((i, k) => `<tr><td>第 ${k + 1} 名</td><td>${G.names[i]}</td><td class="num">${G.scores[i].toLocaleString()}</td></tr>`).join('')}</table>`,
-    [{ label: '再來一將', v: 1 }]);
-  newGame();
+  G.over = { reason, rank, scores: G.scores.slice() };
+  render();
+  const v = await waitModal(gameOverHTML(G.over, buildDisplay(0)), [{ label: '回大廳', v: 'lobby', alt: true }, { label: '再來一將', v: 'again' }]);
+  G.over = null;
+  if (v === 'again') return newGame();
+  if (NET.role) NET.leave(); else { S = null; clearTable(); }
+  showLobby();
 }
 
 async function gameLoop() {
@@ -879,13 +1012,22 @@ async function gameLoop() {
     }
   } catch (e) { if (e !== ABORT) { console.error(e); addLog('發生錯誤：' + e.message); } }
 }
-function newGame() {
+function stopGame() {
   if (S) S.dead = true;
-  if (pending) pending.res(null);
+  for (const pr of [...prompts.values()]) pr.res(null);
+}
+function newGame() {
+  stopGame();
   closeModal();
-  Object.assign(G, { scores: [START, START, START, START], dealer: randInt(4), streak: 0, moves: 0, round: 0, roundWind: 0, logs: [] });
-  addLog(`擲骰決定起莊：${G.names[G.dealer]}`);
+  Object.assign(G, { scores: [START, START, START, START], dealer: randInt(4), streak: 0, moves: 0, round: 0, roundWind: 0, logs: [], result: null, over: null });
+  addLog(`擲骰決定起莊：${nameOf(G.dealer)}`);
   gameLoop();
+}
+function startSolo() {
+  NET.leave();
+  G.mode = 'solo'; G.seats = SOLO_SEATS();
+  setMode();
+  newGame();
 }
 
 const RULES = `<h2>規則說明</h2>
@@ -894,39 +1036,359 @@ const RULES = `<h2>規則說明</h2>
 <li>摸到花牌立即補花（從牌尾補）。牌山最後 16 張不摸，摸完即流局，莊家連莊。</li>
 <li>只能吃上家的牌；碰、槓、胡任何人皆可。優先順序：胡 ＞ 碰/槓 ＞ 吃；多人可胡時由出牌者下家起算最近者（截胡）。</li>
 <li>計分：底 ${BASE}、每台 ${PER_TAI}。放槍由放槍者付，自摸三家各付。莊家與連莊台數只算莊家相關的那一筆。</li>
-<li>台數：莊家1、連N拉N 2N、門清1、自摸1、門清自摸3、正花1、春夏秋冬/梅蘭竹菊2、八仙過海8、三元牌1、圈風/門風1、小三元4、大三元8、小四喜8、大四喜16、碰碰胡4、三暗刻2、四暗刻5、五暗刻8、混一色4、清一色8、字一色16、平胡2、全求人2、獨聽1、槓上開花1、海底撈月1、河底撈魚1、天胡24。</li>
+<li>台數：莊家1、連N拉N 2N、門清1、自摸1、門清自摸3、正花1、春夏秋冬/梅蘭菊竹2、八仙過海8、三元牌1、圈風/門風1、小三元4、大三元8、小四喜8、大四喜16、碰碰胡4、三暗刻2、四暗刻5、五暗刻8、混一色4、清一色8、字一色16、平胡2、全求人2、獨聽1、槓上開花1、海底撈月1、河底撈魚1、天胡24。</li>
 <li>本版本未實作：搶槓、七搶一/八仙過海直接胡、相公判定。</li>
 </ul>
-<h3>操作</h3><p>點一張牌選取、再點一次打出。可吃碰槓胡時會出現按鈕。「聽牌提示」會標出打了會聽牌的牌與還剩幾張（只用你看得到的資訊計算）。「托管」讓電腦代打。</p>`;
-const FAIR = () => `<h2>公平性說明</h2>
+<h3>操作</h3><p>點一張牌選取、再點一次打出。可吃碰槓胡時會出現按鈕。「聽牌提示」會標出打了會聽牌的牌與還剩幾張（只用你看得到的資訊計算）。「托管」讓電腦代打。</p>
+<h3>連線對戰</h3><p>「開房間」會拿到 5 位數房號，傳給朋友加入；「自動配對」會和線上其他玩家湊滿四人。空位由電腦代打。連線時每次決定有 30 秒，超過由電腦代打一手。開房間的人負責發牌，請讓他的 App 保持開著。</p>`;
+const currentFair = () => NET.role === 'client' ? NET.lastFair : G.lastFair;
+const FAIR = () => {
+  const commit = NET.role === 'client' ? (lastD && lastD.commit) : (S && S.commit);
+  return `<h2>公平性說明</h2>
 <ol>
 <li><b>真亂數洗牌</b>：使用瀏覽器的密碼學亂數 <code>crypto.getRandomValues</code>，搭配無偏差的 Fisher–Yates 洗牌（拒絕取樣、無取模偏差）。</li>
-<li><b>開局前承諾</b>：洗好牌後立刻計算 <code>SHA-256(salt|整副牌山)</code> 並顯示在桌面中央。之後牌山就不能偷換，否則雜湊對不上。</li>
+<li><b>開局前承諾</b>：洗好牌後立刻計算 <code>SHA-256(salt|整副牌山)</code> 並公布。之後牌山就不能偷換，否則雜湊對不上。</li>
 <li><b>局後公開驗證</b>：每局結束公開 salt 與完整牌山，並核對這局每一次摸牌（含補花、槓牌從牌尾補）都照牌山順序。</li>
-<li><b>電腦不偷看</b>：電腦的決策程式只拿得到「自己的手牌＋桌面公開資訊」（捨牌、明牌面子、花牌、剩餘張數）。看不到你的手牌、牌山，也看不到別人暗槓的牌。</li>
+<li><b>電腦不偷看</b>：電腦的決策程式只拿得到「自己的手牌＋桌面公開資訊」。看不到你的手牌、牌山，也看不到別人暗槓的牌。</li>
 <li><b>同一套規則</b>：電腦和你使用同一個胡牌判定與計台程式，沒有任何加成或調牌。</li>
-<li><b>畫面也不藏資訊</b>：對手的手牌只以牌背畫出，網頁元素裡沒有牌面資料。</li>
+<li><b>連線時</b>：每位玩家只收到自己的手牌與桌面公開資訊。發牌由開房間的那台負責。</li>
 </ol>
-${S ? `<h3>本局承諾</h3><p><code>${S.commit}</code></p>` : ''}
-<h3>上一局驗證</h3>${fairBlock(G.lastFair)}`;
+${commit ? `<h3>本局承諾</h3><p><code>${esc(commit)}</code></p>` : ''}
+<h3>上一局驗證</h3>${fairBlock(currentFair())}`;
+};
+
+/* ================= 連線（Firebase 即時資料庫） =================
+   房主那台跑遊戲引擎，把「每個人看得到的畫面資料」寫到 rooms/房號/view/玩家，
+   玩家的動作寫到 rooms/房號/act/玩家。資料庫規則讓每個人只能讀自己那一份。 */
+const FB_VER = '10.12.2';
+const NET = {
+  role: null, code: null, uid: null, db: null, offset: 0, seat: 0, open: false, status: null,
+  subs: [], lastSent: {}, online: {}, seatsVal: {}, lastFair: null, started: false, hostUid: null,
+  hostAway: false, modalKind: null, shownNext: null, shownOver: null, autoSeq: null, syncT: 0, awayT: 0,
+  now() { return Date.now() + this.offset; },
+  ref(p) { return this.db.ref(`rooms/${this.code}/${p}`); },
+  watch(path, fn) { const r = this.db.ref(path); const h = r.on('value', fn, err => console.warn(path, err)); this.subs.push([r, h]); },
+  unwatchAll() { for (const [r, h] of this.subs) r.off('value', h); this.subs = []; },
+  // 房主：把每位連線玩家的畫面資料寫出去（同一輪內的多次更新合併成一次）
+  sync() {
+    if (this.role !== 'host' || this.syncT) return;
+    this.syncT = setTimeout(() => {
+      this.syncT = 0;
+      if (!S || this.role !== 'host') return;
+      for (let p = 0; p < 4; p++) {
+        const s = G.seats[p]; if (s.type !== 'remote') continue;
+        const D = buildDisplay(p); D.lastFair = G.result ? G.lastFair : null;
+        const j = JSON.stringify(D);
+        if (j !== this.lastSent[p]) { this.lastSent[p] = j; this.ref(`view/${s.uid}`).set(j).catch(e => console.warn(e)); }
+      }
+    }, 30);
+  },
+  promptRemote(pr) { if (!this.online[G.seats[pr.p].uid]) pr.timers.push(setTimeout(pr.ai, 1500)); },
+  send(seq, a) {
+    this.ref(`act/${this.uid}`).set({ seq, a: JSON.stringify(a) }).catch(e => console.warn(e));
+    if (lastD) { lastD = { ...lastD, prompt: null }; draw(lastD); }
+  },
+  leave() {
+    if (this.db) this.unwatchAll();
+    if (this.db && this.code) {
+      if (this.role === 'host') { this.db.ref(`rooms/${this.code}`).remove(); this.db.ref(`lobby/${this.code}`).remove(); }
+      else {
+        this.ref(`online/${this.uid}`).remove();
+        if (this.status !== 'playing') this.ref(`seats/${this.seat}`).remove();
+      }
+    }
+    const wasOnline = !!this.role;
+    clearTimeout(this.awayT);
+    Object.assign(this, { role: null, code: null, open: false, status: null, lastSent: {}, online: {}, seatsVal: {}, lastFair: null,
+      started: false, hostUid: null, hostAway: false, modalKind: null, shownNext: null, shownOver: null, autoSeq: null });
+    saveRoom(null);
+    if (wasOnline) { stopGame(); S = null; G.mode = 'solo'; G.seats = SOLO_SEATS(); clearTable(); }
+    setMode();
+  }
+};
+
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('無法載入連線元件，請檢查網路')); document.head.appendChild(s); });
+}
+let fbReady = null;
+function connect() {
+  if (fbReady) return fbReady;
+  fbReady = (async () => {
+    const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+    await loadScript(base + 'firebase-app-compat.js');
+    await Promise.all([loadScript(base + 'firebase-auth-compat.js'), loadScript(base + 'firebase-database-compat.js'),
+      window.FIREBASE_CONFIG ? null : loadScript('firebase-config.js')]);
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    const auth = firebase.auth();
+    // 測試用：網址加 ?test=1 時每個分頁各自是一位玩家
+    if (TEST) await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+    let user = await new Promise(r => { const off = auth.onAuthStateChanged(u => { off(); r(u); }); });
+    if (!user) user = (await auth.signInAnonymously()).user;
+    NET.uid = user.uid;
+    NET.db = firebase.database();
+    NET.db.ref('.info/serverTimeOffset').on('value', s => { NET.offset = s.val() || 0; });
+    NET.db.ref('.info/connected').on('value', s => { if (s.val()) onReconnect(); });
+    // 等真的連上伺服器再繼續，避免剛連線時讀到空資料
+    await new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('連不上伺服器，請確認網路後再試一次')), 15000); const r = NET.db.ref('.info/connected'); const h = r.on('value', s => { if (s.val()) { clearTimeout(t); r.off('value', h); res(); } }); });
+    // 上次當房主留下的房間已經不能繼續，順手清掉
+    const saved = loadRoom();
+    if (saved && saved.role === 'host') {
+      saveRoom(null);
+      const m = (await NET.db.ref(`rooms/${saved.code}/meta`).once('value').catch(() => null));
+      if (m && m.val() && m.val().host === NET.uid) { NET.db.ref(`rooms/${saved.code}`).remove().catch(() => {}); NET.db.ref(`lobby/${saved.code}`).remove().catch(() => {}); }
+    }
+  })();
+  fbReady.catch(() => { fbReady = null; });
+  return fbReady;
+}
+// 連線恢復時重新報到（斷線時資料庫會自動把「在線」拿掉）
+function onReconnect() {
+  if (!NET.code) return;
+  const on = NET.ref(`online/${NET.uid}`);
+  on.set(true); on.onDisconnect().remove();
+  if (NET.role === 'host' && NET.open && !NET.started) { const L = NET.db.ref(`lobby/${NET.code}`); L.set({ open: true, t: firebase.database.ServerValue.TIMESTAMP }); L.onDisconnect().remove(); }
+}
+
+// 測試模式（網址加 ?test=1）每個分頁各自記錄，正式使用時記在這台裝置上
+const TEST = /[?&]test=1/.test(location.search);
+const store = () => TEST ? sessionStorage : localStorage;
+function saveRoom(r) { try { r ? store().setItem('mj_room', JSON.stringify(r)) : store().removeItem('mj_room'); } catch (e) {} }
+function loadRoom() { try { return JSON.parse(store().getItem('mj_room') || 'null'); } catch (e) { return null; } }
+function getNick() { try { return store().getItem('mj_nick') || localStorage.getItem('mj_nick') || ''; } catch (e) { return ''; } }
+function setNick(n) { try { store().setItem('mj_nick', n); } catch (e) {} }
+
+async function createRoom(nick, open) {
+  let code = null;
+  for (let i = 0; i < 8 && !code; i++) {
+    const c = String(10000 + randInt(90000));
+    const r = await NET.db.ref(`rooms/${c}/meta`).transaction(cur => cur ? undefined : { host: NET.uid, status: 'waiting', open: !!open, t: Date.now() });
+    if (r.committed) code = c;
+  }
+  if (!code) throw new Error('開房失敗，請再試一次');
+  Object.assign(NET, { code, role: 'host', seat: 0, open: !!open, status: 'waiting', hostUid: NET.uid, started: false });
+  await NET.ref('seats/0').set({ uid: NET.uid, name: nick });
+  onReconnect();
+  saveRoom({ code, role: 'host' });
+  NET.watch(`rooms/${code}/seats`, s => {
+    NET.seatsVal = s.val() || {};
+    if (NET.started) return;
+    drawWaiting();
+    if (seatList().every(Boolean)) startOnline();      // 湊滿四人就開始
+  });
+  NET.watch(`rooms/${code}/online`, s => {
+    NET.online = s.val() || {};
+    if (!NET.started) { drawWaiting(); return; }
+    for (const pr of prompts.values()) if (G.seats[pr.p].type === 'remote' && !NET.online[G.seats[pr.p].uid]) pr.timers.push(setTimeout(pr.ai, 1500));
+    render();
+  });
+}
+async function joinRoom(nick, code) {
+  if (!/^\d{5}$/.test(code)) throw new Error('房號是 5 位數字');
+  const meta = (await NET.db.ref(`rooms/${code}/meta`).once('value')).val();
+  if (!meta) throw new Error('找不到這個房間');
+  const seatsVal = (await NET.db.ref(`rooms/${code}/seats`).once('value')).val() || {};
+  let seat = -1;
+  for (const [i, s] of Object.entries(seatsVal)) if (s && s.uid === NET.uid) seat = +i;
+  if (seat < 0) {
+    if (meta.status !== 'waiting') throw new Error('這個房間已經開始了');
+    for (let i = 1; i < 4 && seat < 0; i++) {
+      const r = await NET.db.ref(`rooms/${code}/seats/${i}`).transaction(cur => cur ? undefined : { uid: NET.uid, name: nick });
+      if (r.committed) seat = i;
+    }
+  }
+  if (seat < 0) throw new Error('房間已經滿了');
+  Object.assign(NET, { code, role: 'client', seat, open: !!meta.open, status: meta.status, hostUid: meta.host });
+  const seatRef = NET.ref(`seats/${seat}`);
+  if (meta.status === 'waiting') seatRef.onDisconnect().remove();   // 開局前離線就讓出位子
+  onReconnect();
+  saveRoom({ code, role: 'client' });
+  NET.watch(`rooms/${code}/meta`, s => {
+    const m = s.val();
+    if (!m) { if (NET.role === 'client') { NET.leave(); showLobby('房主已經離開，牌局結束了。'); } return; }
+    NET.status = m.status; NET.open = !!m.open; NET.hostUid = m.host;
+    if (m.status === 'playing') seatRef.onDisconnect().cancel();
+    if (m.status === 'waiting') drawWaiting();
+  });
+  NET.watch(`rooms/${code}/seats`, s => { NET.seatsVal = s.val() || {}; if (NET.status === 'waiting') drawWaiting(); });
+  NET.watch(`rooms/${code}/online`, s => {
+    NET.online = s.val() || {};
+    const away = NET.status === 'playing' && !NET.online[NET.hostUid];
+    if (away !== NET.hostAway) {
+      NET.hostAway = away; clearTimeout(NET.awayT);
+      if (away) NET.awayT = setTimeout(hostGoneDialog, 30000);
+      if (lastD) draw(lastD);
+    }
+    if (NET.status === 'waiting') drawWaiting();
+  });
+  NET.watch(`rooms/${code}/view/${NET.uid}`, s => {
+    const j = s.val(); if (!j) return;
+    let D; try { D = JSON.parse(j); } catch (e) { return; }
+    clientDraw(D);
+  });
+}
+async function quickMatch(nick) {
+  const snap = await NET.db.ref('lobby').orderByChild('open').equalTo(true).limitToFirst(20).once('value');
+  const codes = Object.keys(snap.val() || {});
+  for (const code of codes) {
+    try { await joinRoom(nick, code); return; }
+    catch (e) { NET.unwatchAll(); NET.db.ref(`rooms/${code}/meta`).once('value').then(m => { if (!m.exists()) NET.db.ref(`lobby/${code}`).remove(); }).catch(() => {}); }
+  }
+  await createRoom(nick, true);
+}
+const seatList = () => [0, 1, 2, 3].map(i => NET.seatsVal[i] || null);
+
+function drawWaiting() {
+  if (!NET.code || NET.started || NET.status === 'playing') return;
+  const seats = seatList(), n = seats.filter(Boolean).length, host = NET.role === 'host';
+  NET.modalKind = 'waiting';
+  modal(`<h2>${NET.open ? '自動配對中…' : '房間已開好'}</h2>
+    ${NET.open ? `<p>正在幫你找其他玩家（${n}/4）。湊滿四人會自動開始。</p>`
+      : `<p>房號</p><p class="code">${esc(NET.code)}</p><p>把房號傳給朋友，在大廳的「輸入房號」加入。</p>`}
+    <ul class="seatlist">${seats.map(s => `<li>${s ? esc(s.name) + (s.uid === NET.uid ? '（你）' : '') + (NET.online[s.uid] ? '' : ' <small>離線</small>') : '<span class="muted">等待加入…</span>'}</li>`).join('')}</ul>
+    <p class="muted">${host ? '按開始後，空位由電腦代打。' : '等待房主開始遊戲…'}</p>
+    <div class="btns"><button class="btn alt" id="wrLeave">離開</button>${host ? `<button class="btn" id="wrStart">${NET.open && n < 4 ? '不等了，電腦補位開始' : '開始遊戲'}</button>` : ''}</div>`);
+  $('wrLeave').onclick = () => { NET.leave(); showLobby(); };
+  if (host) $('wrStart').onclick = startOnline;
+}
+async function startOnline() {
+  if (NET.started) return;
+  NET.started = true; NET.status = 'playing';
+  NET.ref('meta/status').set('playing');
+  NET.db.ref(`lobby/${NET.code}`).remove();
+  G.mode = 'host';
+  G.seats = seatList().map(s => !s ? { type: 'ai' } : s.uid === NET.uid ? { type: 'local', name: s.name, uid: s.uid } : { type: 'remote', name: s.name, uid: s.uid });
+  G.seats.forEach((s, p) => {
+    if (s.type !== 'remote') return;
+    NET.watch(`rooms/${NET.code}/act/${s.uid}`, snap => {
+      const v = snap.val(); if (!v) return;
+      const pr = prompts.get(p); if (!pr || pr.seq !== v.seq) return;
+      let a = null; try { a = JSON.parse(v.a); } catch (e) {}
+      pr.res(validAct(p, pr.kind, pr.data, a) ? a : aiDecide(p, pr.kind, pr.data));
+    });
+  });
+  NET.modalKind = null;
+  setMode(); keepAwake();
+  newGame();
+}
+// 連線玩家：收到房主送來的畫面資料
+function clientDraw(D) {
+  if (D.lastFair) NET.lastFair = D.lastFair;
+  if (NET.modalKind === 'waiting' || NET.modalKind === 'lobby') { closeModal(); NET.modalKind = null; keepAwake(); }
+  draw(D);
+  if (D.over) {
+    const key = JSON.stringify(D.over);
+    if (NET.shownOver !== key) {
+      NET.shownOver = key; NET.modalKind = 'over';
+      waitModal(gameOverHTML(D.over, D) + '<p class="muted">等待房主決定要不要再來一將…</p>', [{ label: '離開房間', v: 1, alt: true }])
+        .then(() => { NET.leave(); showLobby(); });
+    }
+  } else if (D.result && D.prompt && D.prompt.kind === 'next') {
+    if (NET.shownNext !== D.prompt.seq) {
+      NET.shownNext = D.prompt.seq; NET.modalKind = 'result';
+      waitModal(resultHTML(D.result, D), [{ label: '下一局', v: 1 }], resultTitle(D.result, D)).then(() => {
+        respond({ type: 'next' });
+        if (NET.modalKind === 'result') { NET.modalKind = 'result-wait'; modal(`<h2>等待其他玩家…</h2><p>大家都按「下一局」後就會開始。</p>`); }
+      });
+    }
+  } else if (!D.result && (NET.modalKind === 'result' || NET.modalKind === 'result-wait' || NET.modalKind === 'over')) {
+    closeModal(); NET.modalKind = null; NET.shownOver = null;
+  }
+  // 托管：由這台的電腦幫忙決定
+  if (G.auto && D.prompt && D.prompt.kind !== 'next' && NET.autoSeq !== D.prompt.seq) {
+    NET.autoSeq = D.prompt.seq;
+    const pr = D.prompt;
+    setTimeout(() => {
+      if (!lastD || !lastD.prompt || lastD.prompt.seq !== pr.seq) return;
+      respond(pr.kind === 'turn' ? AI.turn(D.v, pr.data) : AI.claim(D.v, pr.data.tile, pr.data.opts));
+    }, 400);
+  }
+}
+function hostGoneDialog() {
+  if (!NET.hostAway || NET.role !== 'client') return;
+  modal(`<h2>房主離線了</h2><p>開房間的那台連不上，可能是 App 被關掉或網路中斷。可以再等一下，或回到大廳。</p>
+    <div class="btns"><button class="btn alt" id="hgWait">繼續等</button><button class="btn" id="hgLeave">回大廳</button></div>`);
+  $('hgWait').onclick = () => { closeModal(); NET.awayT = setTimeout(hostGoneDialog, 30000); };
+  $('hgLeave').onclick = () => { NET.leave(); showLobby(); };
+}
+let wakeLockObj = null;
+async function keepAwake() { try { if (navigator.wakeLock && document.visibilityState === 'visible') wakeLockObj = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && NET.role) keepAwake(); });
+
+/* ================= 大廳 ================= */
+function clearTable() {
+  for (const id of ['seat0', 'seat1', 'seat2', 'seat3', 'river0', 'river1', 'river2', 'river3', 'mid']) $(id).innerHTML = '';
+  $('meta').textContent = ''; lastD = null;
+}
+function setMode() {
+  $('btnNew').textContent = NET.role ? '離開' : '新遊戲';
+  $('optSpeed').hidden = NET.role === 'client';
+}
+function showLobby(msg) {
+  const saved = loadRoom();
+  const rejoin = saved && saved.role === 'client' && !NET.role;
+  modal(`<h2>🀄 台灣十六張麻將</h2>
+    ${msg ? `<p class="bad">${esc(msg)}</p>` : ''}
+    <div class="lobby">
+      <label class="fld" for="nick">你的暱稱（連線時其他人看到的名字）</label>
+      <input id="nick" maxlength="8" autocomplete="off" value="${esc(getNick())}" placeholder="最多 8 個字">
+      ${rejoin ? `<button class="btn big" id="lbRejoin">回到房間 ${esc(saved.code)}<small>剛才離開的連線牌局</small></button>` : ''}
+      <button class="btn big" id="lbSolo">單人遊戲<small>對三家電腦，不用網路</small></button>
+      <button class="btn big" id="lbQuick">自動配對<small>和線上玩家湊滿四人，人不夠可以電腦補位</small></button>
+      <button class="btn big" id="lbHost">開房間<small>拿到房號傳給朋友</small></button>
+      <div class="joinrow"><input id="code" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="輸入 5 位數房號"><button class="btn" id="lbJoin">加入</button></div>
+      <p class="lbmsg" id="lbMsg" role="status"></p>
+    </div>
+    <details><summary>規則說明</summary>${RULES.replace('<h2>規則說明</h2>', '')}</details>`);
+  NET.modalKind = 'lobby';
+  const go = fn => async () => {
+    const nick = ($('nick').value || '').trim().slice(0, 8);
+    if (!nick) { $('lbMsg').textContent = '請先輸入暱稱。'; $('nick').focus(); return; }
+    setNick(nick);
+    $('lbMsg').textContent = '連線中…';
+    $('modalCard').querySelectorAll('button').forEach(b => b.disabled = true);
+    try { await connect(); await fn(nick); }
+    catch (e) {
+      console.error(e);
+      NET.leave();
+      if ($('lbMsg')) {
+        $('lbMsg').textContent = e && /[一-鿿]/.test(e.message || '') ? e.message : '連線失敗，請確認網路後再試一次。';
+        $('modalCard').querySelectorAll('button').forEach(b => b.disabled = false);
+      }
+    }
+  };
+  $('lbSolo').onclick = () => startSolo();
+  $('lbQuick').onclick = go(nick => quickMatch(nick));
+  $('lbHost').onclick = go(nick => createRoom(nick, false));
+  $('lbJoin').onclick = go(nick => joinRoom(nick, ($('code').value || '').trim()));
+  $('code').onkeydown = e => { if (e.key === 'Enter') $('lbJoin').click(); };
+  if (rejoin) $('lbRejoin').onclick = go(nick => joinRoom(nick, saved.code));
+}
 
 $('btnRules').onclick = () => { modal(RULES + `<div class="btns"><button class="btn" id="mclose">關閉</button></div>`); $('mclose').onclick = closeModal; };
 $('btnFair').onclick = () => { modal(FAIR() + `<div class="btns"><button class="btn" id="mclose">關閉</button></div>`); $('mclose').onclick = closeModal; bindFairButtons(); };
 $('btnNew').onclick = () => {
-  if (!S) return newGame();
+  if (NET.role) {
+    modal(`<h2>離開牌局？</h2><p>${NET.role === 'host' ? '你是房主，離開後這場牌局會結束，其他人也會回到大廳。' : '離開後可以在大廳按「回到房間」接著打。'}</p>
+      <div class="btns"><button class="btn alt" id="mclose">取消</button><button class="btn" id="mok">離開</button></div>`);
+    $('mclose').onclick = closeModal;
+    $('mok').onclick = () => { const keep = NET.role === 'client' && NET.status === 'playing' ? { code: NET.code, role: 'client' } : null; NET.leave(); saveRoom(keep); showLobby(); };
+    return;
+  }
+  if (!S) return showLobby();
   // 用自己的視窗代替 confirm()，iPad 主畫面模式與內嵌頁面都能用
-  modal(`<h2>重新開始？</h2><p>目前分數會歸零。</p><div class="btns"><button class="btn alt" id="mclose">取消</button><button class="btn" id="mok">重新開始</button></div>`);
-  $('mclose').onclick = closeModal; $('mok').onclick = newGame;
+  modal(`<h2>重新開始？</h2><p>目前分數會歸零。</p><div class="btns"><button class="btn alt" id="mlobby">回大廳</button><button class="btn alt" id="mclose">取消</button><button class="btn" id="mok">重新開始</button></div>`);
+  $('mclose').onclick = closeModal; $('mok').onclick = newGame; $('mlobby').onclick = () => { stopGame(); S = null; clearTable(); showLobby(); };
 };
-$('optHint').onchange = e => { G.hint = e.target.checked; render(); };
-$('optAuto').onchange = e => { G.auto = e.target.checked; if (G.auto) autoResolve(); render(); };
+$('optHint').onchange = e => { G.hint = e.target.checked; if (NET.role === 'client') { if (lastD) draw(lastD); } else render(); };
+$('optAuto').onchange = e => {
+  G.auto = e.target.checked;
+  if (NET.role === 'client') { NET.autoSeq = null; if (lastD) clientDraw(lastD); }
+  else { if (G.auto) autoResolve(); render(); }
+};
 $('optSpeed').onchange = e => { G.speed = +e.target.value; };
 
-// 開始畫面
-modal(`<h2>🀄 台灣十六張麻將</h2><p>你在畫面下方，對手是三位電腦。每一局開始前會公布牌山的 SHA-256 承諾，結束後可以驗證牌沒有被動過手腳。</p>
-${RULES.replace('<h2>規則說明</h2>', '')}
-<div class="btns"><button class="btn" id="mstart">開始遊戲</button></div>`);
-$('mstart').onclick = () => newGame();
+// 開始畫面：大廳
+showLobby();
 
 // 放在網站上時註冊離線快取（直接開檔案時不會執行）
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

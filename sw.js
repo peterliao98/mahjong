@@ -1,6 +1,6 @@
-// 離線快取：有網路時拿最新版並更新快取，沒網路時用快取
-const CACHE = 'mahjong16-v1';
-const FILES = ['./', './index.html', './manifest.webmanifest', './apple-touch-icon.png', './icon-192.png', './icon-512.png'];
+// 離線快取：有網路時拿最新版並更新快取，沒網路時用快取（只管自己網站的檔案，連線用的 Firebase 不經過這裡）
+const CACHE = 'mahjong16-v2';
+const FILES = ['./', './index.html', './manifest.webmanifest', './firebase-config.js', './apple-touch-icon.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -13,7 +13,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then(res => {
