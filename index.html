@@ -18,6 +18,7 @@
   /* 自己的手牌：17 張＋摸牌間隔剛好排滿打牌區寬度（牌桌最寬 1180px），高度不超過畫面的 9% */
   --hw: clamp(22px, calc((min(100vw, 1180px) - 74px) / 17.5), min(80px, 9vh));
   --sw: clamp(15px, 2.5vw, 27px);
+  --mw: max(22px, calc(var(--hw) * .72));   /* 自己的花牌與吃碰槓的牌 */
   --xw: clamp(12px, 1.9vw, 20px);
 }
 *{box-sizing:border-box}
@@ -68,6 +69,25 @@ button,select{font:inherit}
 .act.win{background:#e74c3c;color:#fff}.act.pung{background:#f2c14e}.act.kong{background:#9b59b6;color:#fff}.act.chow{background:#5dade2}
 .act.pass{background:#7f8c8d;color:#fff}
 .act .tile{--tw:18px}
+/* 自己的區域：放大分數、花牌、吃碰槓的牌與動作按鈕 */
+.mehead{display:flex;align-items:center;gap:16px;min-height:calc(var(--mw)*1.36 + 6px)}
+.me .head{flex:none;flex-direction:column;align-items:flex-start;gap:2px}
+.me .head b{font-size:20px}
+.me .wind{font-size:18px;padding:1px 8px}
+.me .dealer{font-size:15px;padding:1px 6px}
+.me .score{font-size:26px;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+.mel{flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;align-items:flex-end;padding:2px 0 4px}
+.mel .meld{margin-right:8px}
+.mel .sep{flex:none;width:10px}
+.tile.md{--tw:var(--mw)}
+.me .actions{gap:10px;min-height:56px}
+.me .act{font-size:21px;padding:9px 22px;min-height:52px;border-radius:12px;gap:6px}
+.me .act .tile{--tw:28px}
+.actions .msg{font-size:18px;color:var(--text);font-weight:700}
+.actions .msg .tile{--tw:34px}
+.me .cd{font-size:20px}
+.ting{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:16px;color:var(--muted);white-space:nowrap}
+.ting .tile{--tw:26px}
 .hand{display:flex;gap:2px;align-items:flex-end;flex-wrap:nowrap;padding-top:16px;min-height:calc(var(--hw)*1.36 + 18px);overflow-x:auto}
 .hand .tile{cursor:default;transition:transform .12s}
 .hand.can .tile{cursor:pointer}
@@ -165,17 +185,17 @@ button,select{font:inherit}
   .rv1,.rv3{width:var(--rvs,calc(var(--sw)*4 + 8px))}
   .mid{align-self:center}
   /* 自己：每一排固定高度 */
-  .me > .row{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:calc(var(--sw)*1.36 + 4px)}
-  .actions{height:50px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+  .mehead{height:calc(var(--mw)*1.36 + 10px)}
+  .me .actions{height:60px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
   .hand{height:calc(var(--hw)*1.36 + 20px);min-height:0;overflow-y:hidden}
-  .hint{height:26px;flex-wrap:nowrap;white-space:nowrap;overflow:hidden}
 }
-.actions .msg .tile{--tw:22px}
 
 @media (max-width:640px){
   #table{gap:5px;padding:5px}
   .brand{font-size:16px}
   .act{padding:6px 10px;font-size:14px}
+  .me .act{font-size:16px;padding:6px 12px;min-height:40px}
+  .me .score{font-size:20px}
   .mid{min-width:0;font-size:11px;padding:4px 0}
   .mid .big{font-size:16px}
 }
@@ -868,7 +888,6 @@ function renderMe(D) {
     for (const t of o.ankong) curActions.push({ label: '暗槓 ' + tileHTML(t), cls: 'kong', v: { type: 'ankong', tile: t } });
     for (const t of o.kakan) curActions.push({ label: '加槓 ' + tileHTML(t), cls: 'kong', v: { type: 'kakan', tile: t } });
     if (selIdx >= 0 && selIdx < disp.length) curActions.push({ label: '打出 ' + tileHTML(disp[selIdx]), cls: '', v: { type: 'discard', tile: disp[selIdx] } });
-    msg = selIdx >= 0 ? '再點一次同一張牌也可打出' : '輪到你：點一張牌選擇，再點一次打出';
   } else if (pr && pr.kind === 'claim') {
     const { tile, from, opts } = pr.data;
     msg = `${esc(dispName(D, from))} 打出 ${tileHTML(tile)}`;
@@ -877,10 +896,8 @@ function renderMe(D) {
     if (opts.pung) curActions.push({ label: '碰', cls: 'pung', v: { type: 'pung' } });
     for (const use of opts.chow) curActions.push({ label: '吃 ' + [...use, tile].sort(byNum).map(x => tileHTML(x)).join(''), cls: 'chow', v: { type: 'chow', use } });
     curActions.push({ label: '過', cls: 'pass', v: { type: 'pass' } });
-  } else if (!D.reveal) {
-    msg = D.cur === me ? '…' : `等待 ${esc(dispName(D, D.cur))}…`;
   }
-  if (pr && pr.deadline) msg += ` <span class="cd" data-dl="${+pr.deadline}"></span>`;
+  const cd = pr && pr.deadline ? `<span class="cd" data-dl="${+pr.deadline}"></span>` : '';
 
   let hint = '';
   if (G.hint && !D.reveal) {
@@ -891,15 +908,16 @@ function renderMe(D) {
     } else if (P.hand.length === 3 * N + 1) {
       const ws = waitsOf(P.hand, held);
       hint = ws.length ? `聽牌中：${waitsHTML(ws, un)}` : `還差 ${shantenC(counts(P.hand), N) + 1} 步聽牌`;
-    } else if (canDiscard) hint = '金色圓點＝打出後可以聽牌';
+    }
   }
 
-  el.innerHTML = seatHead(D, me) +
-    `<div class="row">${P.flowers.map(f => tileHTML(f, 'sm')).join('')}${P.melds.map(m => meldHTML(m, true, 'sm')).join('')}</div>` +
-    `<div class="actions"><span class="msg">${msg}</span>${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}</div>` +
+  // 第一排：風位、名字、分數＋花牌與吃碰槓的牌；第二排：動作按鈕（右邊放聽牌資訊）；第三排：手牌
+  el.innerHTML = `<div class="mehead">${seatHead(D, me)}` +
+    `<div class="row mel">${P.flowers.map(f => tileHTML(f, 'md')).join('')}${P.flowers.length && P.melds.length ? '<span class="sep"></span>' : ''}${P.melds.map(m => meldHTML(m, true, 'md')).join('')}</div></div>` +
+    `<div class="actions">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}` +
+    `${hint ? `<span class="ting">${hint}</span>` : ''}</div>` +
     `<div class="hand ${canDiscard ? 'can' : ''}">${disp.map((t, i) =>
-      tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '')).replace('<div class="tile', `<div data-i="${i}" class="tile`)).join('')}</div>` +
-    `<div class="hint">${hint}</div>`;
+      tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '')).replace('<div class="tile', `<div data-i="${i}" class="tile`)).join('')}</div>`;
   tickCountdown();
 }
 let lastD = null, lastSeq = null;
