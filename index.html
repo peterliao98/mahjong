@@ -200,6 +200,76 @@ button,select{font:inherit}
   .mid{min-width:0;font-size:11px;padding:4px 0}
   .mid .big{font-size:16px}
 }
+
+/* ===== 手機橫拿：一個畫面放下全部；按鈕列收進右上角「☰」選單 ===== */
+.menubtn,#rotate{display:none}
+@media (orientation:landscape) and (max-height:500px){
+  :root{
+    --hw: clamp(20px, calc((100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 60px) / 17.5), 12vh);
+    --mw: calc(var(--hw) * .62);
+    --xw: 13px; --sw: 18px;
+  }
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{display:flex;flex-direction:column}
+  #table{flex:1;min-height:0;width:100%;max-width:none;padding:4px;gap:4px;grid-template-rows:auto minmax(0,1fr) auto}
+  .seat{padding:3px 6px;gap:2px;border-radius:8px}
+  .head{font-size:11px;gap:2px 4px}.head b{font-size:12px}
+  .wind{padding:0 4px}.dealer{font-size:10px;padding:0 4px}
+  /* 對家：一行放完 */
+  .s2{flex-direction:row;justify-content:center;align-items:center;gap:10px;padding-right:48px}
+  .s2 .row{flex-wrap:nowrap}
+  .s1,.s3{width:calc(var(--xw)*4.6 + 14px);overflow-y:auto;overflow-x:hidden}
+  .seat .row{min-height:calc(var(--xw)*1.36)}
+  #center{min-height:0;overflow:hidden;align-items:start;padding:4px;gap:4px;border-radius:10px;
+    grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
+    grid-template-rows:calc((var(--sw)*1.36 + 2px)*2) minmax(0,1fr) calc((var(--sw)*1.36 + 2px)*2)}
+  .river .tile.sm{--tw:var(--rw,var(--sw))}
+  .rv0,.rv2{width:var(--rvt,calc(var(--sw)*12 + 24px))}
+  .rv1,.rv3{width:var(--rvs,calc(var(--sw)*4 + 8px))}
+  .mid{align-self:center;min-width:0;font-size:10px;line-height:1.3;padding:0}
+  .mid .big{font-size:14px}
+  /* 自己：上排＝分數、花牌、吃碰槓（左）＋動作按鈕（右）；下排＝手牌 */
+  .me{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"head acts" "hand hand";
+    column-gap:8px;row-gap:0;padding:3px 8px 4px;border-radius:10px}
+  .mehead{grid-area:head;height:max(42px, calc(var(--mw)*1.36 + 6px));min-height:0;gap:10px}
+  .me .head{flex-direction:row;align-items:center;gap:6px}
+  .me .head b{font-size:14px}.me .wind{font-size:14px}.me .dealer{font-size:12px}
+  .me .score{font-size:18px}
+  .me .actions{grid-area:acts;height:max(42px, calc(var(--mw)*1.36 + 6px));min-height:0;gap:6px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-width:62vw}
+  .me .act{font-size:16px;padding:5px 12px;min-height:38px;border-radius:10px}
+  .me .act .tile{--tw:20px}
+  .actions .msg{font-size:14px}.actions .msg .tile{--tw:24px}
+  .me .cd{font-size:15px}
+  .ting{font-size:12px;gap:3px}.ting .tile{--tw:18px}
+  .hand{grid-area:hand;height:calc(var(--hw)*1.36 + 12px);min-height:0;padding-top:10px;overflow-y:hidden}
+  .hand .tile.sel{transform:translateY(-8px)!important}
+  .hand .tile.tp::after{top:-6px}
+  /* 右上角選單 */
+  .bar{display:none}
+  .menubtn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:15;
+    top:calc(env(safe-area-inset-top, 0px) + 6px);right:calc(env(safe-area-inset-right, 0px) + 8px);
+    width:40px;height:34px;border:0;border-radius:9px;background:rgba(246,239,220,.92);color:#222;font-size:20px;font-weight:800;cursor:pointer}
+  .menubtn.dot::after{content:"";position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:#e74c3c}
+  body.menu-open .bar{display:flex;flex-direction:column;align-items:stretch;gap:10px;position:fixed;z-index:16;
+    top:calc(env(safe-area-inset-top, 0px) + 46px);right:calc(env(safe-area-inset-right, 0px) + 8px);
+    width:min(300px, 80vw);max-height:calc(100% - 56px);overflow:auto;padding:12px;border-radius:12px;background:#123d29;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  body.menu-open .brand{font-size:15px}
+  body.menu-open .meta{white-space:normal;font-size:13px;min-width:0}
+  body.menu-open .ctrls{flex-direction:column;align-items:stretch;gap:8px}
+  body.menu-open .ctrls label{min-height:36px}
+  .modal{padding:8px}
+  .card{max-height:calc(100% - 8px);padding:12px 16px}
+  .card .rhead{top:-12px;margin:-12px -16px 6px;padding:10px 16px 8px}
+}
+/* 手機直拿：請轉成橫向 */
+@media (orientation:portrait) and (max-width:600px){
+  #rotate{display:flex;position:fixed;inset:0;z-index:40;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    padding:24px;background:var(--felt2);color:var(--text);text-align:center;font-size:18px;font-weight:700}
+  #rotate .ph{width:54px;height:86px;border:4px solid var(--gold);border-radius:12px;animation:turn 2.4s ease-in-out infinite}
+  #rotate small{font-size:14px;font-weight:400;color:var(--muted)}
+}
+@keyframes turn{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+@media (prefers-reduced-motion:reduce){#rotate .ph{animation:none;transform:rotate(-90deg)}}
 </style>
 </head>
 <body>
@@ -217,6 +287,8 @@ button,select{font:inherit}
     <button id="btnNew">新遊戲</button>
   </div>
 </header>
+<button id="btnMenu" class="menubtn" aria-label="選單" aria-expanded="false">☰</button>
+<div id="rotate" role="alert"><div class="ph"></div>請把手機轉成橫向<small>麻將要橫著拿才排得下整副手牌</small></div>
 
 <main id="table">
   <section class="seat s2" id="seat2"></section>
@@ -804,7 +876,7 @@ function renderOpp(D, q) {
 }
 /* 牌河放到最大：在中間區域裡試各種「每排幾張、共幾排」，挑牌最大的排法。
    每家先預留 24 張的位置（一般一局用不完），真的超過時才重新排、牌稍微變小 */
-const FIXED_MQ = matchMedia('(min-width:700px) and (min-height:600px)');
+const FIXED_MQ = matchMedia('(min-width:700px) and (min-height:600px), (orientation:landscape) and (max-height:500px)');
 let rvKey = '', rvMax = 0;
 function layoutRivers(maxN) {
   const C = $('center');
@@ -813,11 +885,14 @@ function layoutRivers(maxN) {
     if (rvKey) { ['--rw', '--rvt', '--rvs'].forEach(k => C.style.removeProperty(k)); C.style.gridTemplateColumns = C.style.gridTemplateRows = C.style.justifyContent = ''; rvKey = ''; }
     return;
   }
+  const cs0 = getComputedStyle(C), mid = $('mid');
+  const PAD = parseFloat(cs0.paddingTop) + parseFloat(cs0.paddingBottom), CG = parseFloat(cs0.rowGap) || 6;
+  const MID_H = Math.max(36, mid.scrollHeight + 4), MID_W = Math.max(80, Math.min(140, mid.scrollWidth));
   const cap = Math.max(24, maxN || 0), W = C.clientWidth, H = C.clientHeight;
-  const key = `${W}x${H}:${cap}`;
+  const key = `${W}x${H}:${cap}:${MID_H}`;
   if (!W || !H || key === rvKey) return;
   rvKey = key;
-  const PAD = 16, CG = 6, GX = 2, R = 1.36, MID_H = 66, MID_W = 120, MAX = 72;
+  const GX = 2, R = 1.36, MAX = 72;
   const Wp = W - PAD - 2 * CG, Hp = H - PAD - 2 * CG;
   let best = null;
   for (let ct = 4; ct <= 24; ct++) {
@@ -1452,6 +1527,13 @@ $('optAuto').onchange = e => {
   else { if (G.auto) autoResolve(); render(); }
 };
 $('optSpeed').onchange = e => { G.speed = +e.target.value; };
+// 手機橫拿時的右上角選單
+function setMenu(open) { document.body.classList.toggle('menu-open', open); $('btnMenu').setAttribute('aria-expanded', open); }
+$('btnMenu').onclick = e => { e.stopPropagation(); setMenu(!document.body.classList.contains('menu-open')); };
+document.addEventListener('click', e => {
+  if (!document.body.classList.contains('menu-open')) return;
+  if (!e.target.closest('.bar') || e.target.closest('button')) setMenu(false);
+});
 $('btnUpdate').onclick = () => {
   modal(`<h2>更新到新版本？</h2><p>${S || NET.role ? '目前這場牌局會結束。' : ''}更新只要幾秒鐘。</p><div class="btns"><button class="btn alt" id="mclose">等一下</button><button class="btn" id="mok">更新</button></div>`);
   $('mclose').onclick = closeModal; $('mok').onclick = () => { NET.leave(); location.reload(); };
@@ -1470,7 +1552,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) return;                       // 第一次安裝不用重新載入
     if (!S && !NET.role) location.reload();
-    else $('btnUpdate').hidden = false;
+    else { $('btnUpdate').hidden = false; $('btnMenu').classList.add('dot'); }
   });
 }
 
