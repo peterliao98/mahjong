@@ -15,7 +15,8 @@
 <style>
 :root{
   --felt:#1f6141; --felt2:#123d29; --text:#eef6f0; --muted:#a9cdb8; --gold:#f2c14e;
-  --hw: clamp(22px, calc((100vw - 40px) / 18.8), 48px);
+  /* 自己的手牌：17 張＋摸牌間隔剛好排滿打牌區寬度（牌桌最寬 1180px），高度不超過畫面的 9% */
+  --hw: clamp(22px, calc((min(100vw, 1180px) - 74px) / 17.5), min(80px, 9vh));
   --sw: clamp(15px, 2.5vw, 27px);
   --xw: clamp(12px, 1.9vw, 20px);
 }
