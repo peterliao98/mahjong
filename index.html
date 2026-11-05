@@ -126,6 +126,32 @@ button,select{font:inherit}
   .hand{-webkit-overflow-scrolling:touch}
 }
 
+/* 平板與電腦：整個遊戲剛好一個畫面，每一區固定大小，牌變多也不會推動別的區塊 */
+@media (min-width:700px) and (min-height:600px){
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{display:flex;flex-direction:column}
+  .bar{flex:none}
+  .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #table{flex:1;min-height:0;width:100%;grid-template-rows:auto minmax(0,1fr) auto}
+  /* 對手：每一排先留好位置 */
+  .seat .row{min-height:calc(var(--xw)*1.36)}
+  .s2 .row{flex-wrap:nowrap}
+  .s1,.s3{overflow-y:auto;overflow-x:hidden}
+  /* 牌河：上下各留三排，左右兩家從上往下排，中間資訊不動 */
+  #center{min-height:0;overflow:hidden;align-items:start;
+    grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
+    grid-template-rows:calc((var(--sw)*1.36 + 2px)*3) minmax(0,1fr) calc((var(--sw)*1.36 + 2px)*3)}
+  .rv0,.rv2{height:100%;overflow:hidden}
+  .rv1,.rv3{max-height:100%;overflow:hidden}
+  .mid{align-self:center}
+  /* 自己：每一排固定高度 */
+  .me > .row{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:calc(var(--sw)*1.36 + 4px)}
+  .actions{height:50px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+  .hand{height:calc(var(--hw)*1.36 + 20px);min-height:0;overflow-y:hidden}
+  .hint{height:26px;flex-wrap:nowrap;white-space:nowrap;overflow:hidden}
+}
+.actions .msg .tile{--tw:22px}
+
 @media (max-width:640px){
   #table{gap:5px;padding:5px}
   .brand{font-size:16px}
