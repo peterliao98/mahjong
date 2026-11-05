@@ -89,7 +89,7 @@ button,select{font:inherit}
 .tile.wintile{outline:3px solid #e74c3c;outline-offset:1px}
 .tile.dim{filter:brightness(.88)}
 
-#log{max-width:1180px;margin:0 auto 16px;padding:6px 16px;font-size:13px;color:var(--muted);max-height:120px;overflow:auto}
+#log{display:none;max-width:1180px;margin:0 auto 16px;padding:6px 16px;font-size:13px;color:var(--muted);max-height:120px;overflow:auto}
 #log div{padding:1px 0}
 
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px;z-index:20}
@@ -680,8 +680,7 @@ function renderRivers() {
   }
   $('mid').innerHTML = `<div>${WINDS[G.roundWind]}風圈 · 第 ${G.round + 1} 局</div>` +
     `<div class="big">剩 ${Math.max(0, wallLeft())} 張</div>` +
-    `<div>輪到：${G.names[S.cur]}</div>` +
-    `<div title="開局時公布的牌山 SHA-256 承諾">承諾 <code>${S.commit.slice(0, 12)}…</code></div>`;
+    `<div>輪到：${G.names[S.cur]}</div>`;
 }
 function humanDisplay() {
   const P = S.players[0]; const disp = P.hand.slice(); let drawnIdx = -1;
