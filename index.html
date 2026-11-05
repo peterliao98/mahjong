@@ -44,8 +44,16 @@ button,select{font:inherit}
 .seat{background:rgba(0,0,0,.14);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:5px;border:2px solid transparent;min-width:0}
 .seat.active,.me.active{border-color:var(--gold);box-shadow:0 0 14px rgba(242,193,78,.35)}
 .s2{grid-area:s2;align-items:center}
-.s1{grid-area:s1;width:calc(var(--xw)*4.6 + 16px)}
-.s3{grid-area:s3;width:calc(var(--xw)*4.6 + 16px)}
+/* 對家：每一排先留好最多張數的寬度、牌從左邊排起，摸牌打牌時其他牌不會移動 */
+.s2 > *{width:min(100%, calc((var(--xw) + 3px) * 21))}
+.s2 .row{justify-content:flex-start}
+.s1{grid-area:s1;width:calc(var(--xw)*4 + 25px)}
+.s3{grid-area:s3;width:calc(var(--xw)*4 + 25px)}
+/* 左右兩家：一排 4 張，手牌那排先留 5 排（17 張）的高度 */
+.s1 .row.hrow,.s3 .row.hrow{min-height:calc(var(--xw)*1.36*5 + 12px);align-content:flex-start}
+/* 左右兩家的名字區固定兩行：第一行風位＋名字，第二行莊家＋分數 */
+.s1 .head,.s3 .head{height:3em;align-content:flex-start;overflow:hidden;line-height:1.4}
+.s1 .head b,.s3 .head b{width:calc(100% - 2.4em);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .head{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:13px}
 .head b{font-size:14px}
 .wind{background:#f6efdc;color:#7a2a1d;border-radius:5px;padding:0 5px;font-weight:800}
@@ -216,9 +224,14 @@ button,select{font:inherit}
   .head{font-size:11px;gap:2px 4px}.head b{font-size:12px}
   .wind{padding:0 4px}.dealer{font-size:10px;padding:0 4px}
   /* 對家：一行放完 */
-  .s2{flex-direction:row;justify-content:center;align-items:center;gap:10px;padding-right:48px}
-  .s2 .row{flex-wrap:nowrap}
-  .s1,.s3{width:calc(var(--xw)*4.6 + 14px);overflow-y:auto;overflow-x:hidden}
+  /* 手機：名字｜花牌｜吃碰槓｜手牌，手牌固定在右邊、寬度留 17 張 */
+  .s2{display:grid;grid-template-columns:8.5em calc((var(--xw) + 3px) * 8) minmax(0,1fr) calc(13px * 17);align-items:center;column-gap:8px;padding-right:52px}
+  .s2 > *{width:auto}
+  .s2 .row{flex-wrap:nowrap;overflow:hidden}
+  .s2 .head{flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
+  .s2 .head b{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .s2 .hrow .tile{--tw:10px}
+  .s1,.s3{width:calc(var(--xw)*4 + 25px);overflow-y:auto;overflow-x:hidden}
   .seat .row{min-height:calc(var(--xw)*1.36)}
   #center{min-height:0;overflow:hidden;align-items:start;padding:4px;gap:4px;border-radius:10px;
     grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
@@ -869,10 +882,11 @@ function renderOpp(D, q) {
   const n = Math.min(20, +D.v.handCounts[q] || 0);
   const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t, 'xs')).join('') : Array.from({ length: n }, () => tileHTML(null, 'xs')).join('');
   const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q];
-  el.innerHTML = seatHead(D, q) +
-    `<div class="row">${D.v.flowers[q].map(f => tileHTML(f, 'xs')).join('')}</div>` +
-    `<div class="row">${melds.map(m => meldHTML(m, !!D.reveal, 'xs')).join('')}</div>` +
-    `<div class="row">${hand}</div>`;
+  const fl = `<div class="row">${D.v.flowers[q].map(f => tileHTML(f, 'xs')).join('')}</div>`;
+  const md = `<div class="row">${melds.map(m => meldHTML(m, !!D.reveal, 'xs')).join('')}</div>`;
+  const hd = `<div class="row hrow">${hand}</div>`;
+  // 對家：花牌、吃碰槓、手牌各一排；左右兩家：手牌（先留好 17 張的高度）→花牌→吃碰槓，新的牌只往下長，上面的不會被推動
+  el.innerHTML = seatHead(D, q) + (k === 2 ? fl + md + hd : hd + fl + md);
 }
 /* 牌河放到最大：在中間區域裡試各種「每排幾張、共幾排」，挑牌最大的排法。
    每家先預留 24 張的位置（一般一局用不完），真的超過時才重新排、牌稍微變小 */
