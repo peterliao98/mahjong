@@ -37,6 +37,7 @@ button,select{font:inherit}
 .ctrls label{display:flex;gap:4px;align-items:center;cursor:pointer}
 .btn,.ctrls button,.ctrls select{background:#f6efdc;color:#2b2b2b;border:0;border-radius:8px;padding:5px 10px;cursor:pointer;font-weight:600}
 @media (hover:hover){.ctrls button:hover,.btn:hover{filter:brightness(1.07)}}
+.ctrls .upd{background:var(--gold);color:#222}
 
 #table{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"s2 s2 s2" "s3 c s1" "me me me";
   gap:8px;padding:8px;max-width:1180px;margin:0 auto}
@@ -212,6 +213,7 @@ button,select{font:inherit}
       <option value="1.6">慢速</option><option value="1" selected>中速</option><option value="0.45">快速</option><option value="0.05">極速</option>
     </select>
     <button id="btnRules">規則</button>
+    <button id="btnUpdate" class="upd" hidden>有新版本</button>
     <button id="btnNew">新遊戲</button>
   </div>
 </header>
@@ -1450,13 +1452,26 @@ $('optAuto').onchange = e => {
   else { if (G.auto) autoResolve(); render(); }
 };
 $('optSpeed').onchange = e => { G.speed = +e.target.value; };
+$('btnUpdate').onclick = () => {
+  modal(`<h2>更新到新版本？</h2><p>${S || NET.role ? '目前這場牌局會結束。' : ''}更新只要幾秒鐘。</p><div class="btns"><button class="btn alt" id="mclose">等一下</button><button class="btn" id="mok">更新</button></div>`);
+  $('mclose').onclick = closeModal; $('mok').onclick = () => { NET.leave(); location.reload(); };
+};
 
 // 開始畫面：大廳
 showLobby();
 
 // 放在網站上時註冊離線快取（直接開檔案時不會執行）
+// 自動更新：打開或切回 App 時檢查新版；在大廳就直接換新版，打牌中則顯示「有新版本」按鈕
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;                       // 第一次安裝不用重新載入
+    if (!S && !NET.role) location.reload();
+    else $('btnUpdate').hidden = false;
+  });
 }
 
 // 測試用：只暴露分析函式（不含任何遊戲狀態）
