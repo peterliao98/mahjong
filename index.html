@@ -211,7 +211,6 @@ button,select{font:inherit}
     <select id="optSpeed" title="電腦出牌速度">
       <option value="1.6">慢速</option><option value="1" selected>中速</option><option value="0.45">快速</option><option value="0.05">極速</option>
     </select>
-    <button id="btnFair">公平性驗證</button>
     <button id="btnRules">規則</button>
     <button id="btnNew">新遊戲</button>
   </div>
@@ -1431,7 +1430,6 @@ function showLobby(msg) {
 }
 
 $('btnRules').onclick = () => { modal(RULES + `<div class="btns"><button class="btn" id="mclose">關閉</button></div>`); $('mclose').onclick = closeModal; };
-$('btnFair').onclick = () => { modal(FAIR() + `<div class="btns"><button class="btn" id="mclose">關閉</button></div>`); $('mclose').onclick = closeModal; bindFairButtons(); };
 $('btnNew').onclick = () => {
   if (NET.role) {
     modal(`<h2>離開牌局？</h2><p>${NET.role === 'host' ? '你是房主，離開後這場牌局會結束，其他人也會回到大廳。' : '離開後可以在大廳按「回到房間」接著打。'}</p>
