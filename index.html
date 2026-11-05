@@ -159,8 +159,10 @@ button,select{font:inherit}
   #center{min-height:0;overflow:hidden;align-items:start;
     grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
     grid-template-rows:calc((var(--sw)*1.36 + 2px)*3) minmax(0,1fr) calc((var(--sw)*1.36 + 2px)*3)}
-  .rv0,.rv2{height:100%;overflow:hidden}
-  .rv1,.rv3{max-height:100%;overflow:hidden}
+  /* 牌河大小由程式依中間區域算好（--rw 牌寬、--rvt 上下兩家寬、--rvs 左右兩家寬） */
+  .river .tile.sm{--tw:var(--rw,var(--sw))}
+  .rv0,.rv2{width:var(--rvt,calc(var(--sw)*9 + 18px))}
+  .rv1,.rv3{width:var(--rvs,calc(var(--sw)*4 + 8px))}
   .mid{align-self:center}
   /* 自己：每一排固定高度 */
   .me > .row{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:calc(var(--sw)*1.36 + 4px)}
@@ -779,7 +781,52 @@ function renderOpp(D, q) {
     `<div class="row">${melds.map(m => meldHTML(m, !!D.reveal, 'xs')).join('')}</div>` +
     `<div class="row">${hand}</div>`;
 }
+/* 牌河放到最大：在中間區域裡試各種「每排幾張、共幾排」，挑牌最大的排法。
+   每家先預留 24 張的位置（一般一局用不完），真的超過時才重新排、牌稍微變小 */
+const FIXED_MQ = matchMedia('(min-width:700px) and (min-height:600px)');
+let rvKey = '', rvMax = 0;
+function layoutRivers(maxN) {
+  const C = $('center');
+  rvMax = maxN;
+  if (!FIXED_MQ.matches) {
+    if (rvKey) { ['--rw', '--rvt', '--rvs'].forEach(k => C.style.removeProperty(k)); C.style.gridTemplateColumns = C.style.gridTemplateRows = C.style.justifyContent = ''; rvKey = ''; }
+    return;
+  }
+  const cap = Math.max(24, maxN || 0), W = C.clientWidth, H = C.clientHeight;
+  const key = `${W}x${H}:${cap}`;
+  if (!W || !H || key === rvKey) return;
+  rvKey = key;
+  const PAD = 16, CG = 6, GX = 2, R = 1.36, MID_H = 66, MID_W = 120, MAX = 72;
+  const Wp = W - PAD - 2 * CG, Hp = H - PAD - 2 * CG;
+  let best = null;
+  for (let ct = 4; ct <= 24; ct++) {
+    const rt = Math.ceil(cap / ct);
+    for (let cs = 1; cs <= 12; cs++) {
+      const rs = Math.ceil(cap / cs);
+      const s = Math.floor(Math.min(
+        (Wp - (2 * cs + ct - 3) * GX - 2) / (2 * cs + ct),       // 寬：左＋中＋右
+        (Hp - MID_H - 2 * (rt - 1) * GX - 2) / (2 * rt * R),      // 高：上＋中間資訊＋下
+        (H - PAD - (rs - 1) * GX - 1) / (rs * R),                 // 左右兩家的高
+        MAX));
+      if (ct * s + (ct - 1) * GX < MID_W) continue;
+      if (!best || s > best.s) best = { s, ct, rt, cs };
+    }
+  }
+  if (!best) return;
+  const { s, ct, rt, cs } = best;
+  const w = n => n * s + (n - 1) * GX + 1, h = n => Math.ceil(n * s * R + (n - 1) * GX) + 1;
+  C.style.setProperty('--rw', s + 'px');
+  C.style.setProperty('--rvt', w(ct) + 'px');
+  C.style.setProperty('--rvs', w(cs) + 'px');
+  C.style.gridTemplateColumns = `${w(cs)}px ${w(ct)}px ${w(cs)}px`;
+  C.style.gridTemplateRows = `${h(rt)}px minmax(0,1fr) ${h(rt)}px`;
+  C.style.justifyContent = 'space-evenly';
+}
+// 中間區域大小一變（轉向、視窗縮放）就重新排
+if (window.ResizeObserver) new ResizeObserver(() => layoutRivers(rvMax)).observe($('center'));
+addEventListener('resize', () => requestAnimationFrame(() => layoutRivers(rvMax)));
 function renderRivers(D) {
+  layoutRivers(Math.max(...D.v.discards.map(d => d.length)));
   for (let q = 0; q < 4; q++) {
     $('river' + ((q - D.me + 4) % 4)).innerHTML = D.v.discards[q].map((d, i) => {
       const last = D.last && D.last.p === q && D.last.i === i;
