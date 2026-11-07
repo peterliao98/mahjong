@@ -81,7 +81,10 @@ button,select{font:inherit}
 .mid code{font-size:11px;color:#d6e9dc}
 
 .me{grid-area:me;background:rgba(0,0,0,.18);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
-.actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:36px}
+/* 動作列：吃碰槓胡按鈕與提示放在正中間（左右兩欄等寬），聽牌資訊靠右 */
+.actions{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;min-height:36px}
+.acts-main{grid-column:2;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:inherit;min-width:0}
+.acts-main:empty{display:none}
 .actions .msg{font-size:14px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .act{border:0;border-radius:9px;padding:7px 14px;font-weight:800;cursor:pointer;font-size:15px;display:inline-flex;gap:3px;align-items:center;background:#f6efdc;color:#222}
 .act.win{background:#e74c3c;color:#fff}.act.pung{background:#f2c14e}.act.kong{background:#9b59b6;color:#fff}.act.chow{background:#5dade2}
@@ -104,7 +107,7 @@ button,select{font:inherit}
 .actions .msg{font-size:18px;color:var(--text);font-weight:700}
 .actions .msg .tile{--tw:34px}
 .me .cd{font-size:20px}
-.ting{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:16px;color:var(--muted);white-space:nowrap}
+.ting{grid-column:3;justify-self:end;display:flex;align-items:center;gap:5px;font-size:16px;color:var(--muted);white-space:nowrap}
 .ting .tile{--tw:26px}
 .hand{display:flex;gap:2px;align-items:flex-end;flex-wrap:nowrap;padding-top:16px;min-height:calc(var(--hw)*1.36 + 18px);overflow-x:auto}
 .hand .tile{cursor:default;transition:transform .12s}
@@ -232,7 +235,8 @@ button,select{font:inherit}
   .mid{align-self:center}
   /* 自己：每一排固定高度 */
   .mehead{height:calc(var(--mw)*1.36 + 10px)}
-  .me .actions{height:60px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+  .me .actions{height:60px;overflow-x:auto;overflow-y:hidden}
+  .me .acts-main{flex-wrap:nowrap}
   .hand{height:calc(var(--hw)*1.36 + 20px);min-height:0;overflow-y:hidden}
 }
 
@@ -285,7 +289,12 @@ button,select{font:inherit}
   .me .head{flex-direction:row;align-items:center;gap:6px}
   .me .head b{font-size:14px}.me .wind{font-size:14px}.me .dealer{font-size:12px}
   .me .score{font-size:18px}
-  .me .actions{grid-area:acts;height:max(42px, calc(var(--mw)*1.36 + 6px));min-height:0;gap:6px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-width:62vw}
+  .me .actions{grid-area:acts;height:max(42px, calc(var(--mw)*1.36 + 6px));min-height:0;gap:6px;overflow-x:auto;overflow-y:hidden;max-width:62vw}
+  /* 有按鈕時：左欄（分數與吃碰槓）和右欄（聽牌資訊）等寬，按鈕在畫面正中間 */
+  .me.hasacts{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-areas:"head acts tg" "hand hand hand"}
+  .me.hasacts .actions{display:contents}
+  .me.hasacts .acts-main{grid-area:acts;height:max(42px, calc(var(--mw)*1.36 + 6px));flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-width:62vw;gap:6px}
+  .me.hasacts .ting{grid-area:tg;justify-self:end;overflow:hidden}
   .me .act{font-size:16px;padding:5px 12px;min-height:38px;border-radius:10px}
   .me .act .tile{--tw:20px}
   .actions .msg{font-size:14px}.actions .msg .tile{--tw:24px}
@@ -1019,7 +1028,7 @@ function waitsHTML(ws, un) {
 function renderMe(D) {
   const el = $('seat0'), me = D.me;
   const P = { hand: D.v.hand, melds: D.v.melds[me], flowers: D.v.flowers[me] };
-  el.className = 'me' + (D.cur === me && !D.reveal ? ' active' : '');
+  el.className = 'me' + (D.cur === me && !D.reveal ? ' active' : '');   // 有按鈕或提示時再加 hasacts（見下方）
   const { disp, drawnIdx } = humanDisplay(D);
   const pr = D.prompt && D.prompt.kind !== 'next' ? D.prompt : null;
   const canDiscard = pr && pr.kind === 'turn';
@@ -1055,6 +1064,7 @@ function renderMe(D) {
   }
   if (!msg && !curActions.length) msg = noticeHTML(D);
   const cd = pr && pr.deadline ? `<span class="cd" data-dl="${+pr.deadline}"></span>` : '';
+  if (msg || curActions.length || cd) el.classList.add('hasacts');
 
   let hint = '';
   if (G.hint && !D.reveal && !coverDraw && dealDelay(disp.length - 1) == null) {   // 亮牌時先不顯示聽牌提示（最右邊那張最後亮）
@@ -1071,7 +1081,7 @@ function renderMe(D) {
   // 第一排：風位、名字、分數＋花牌與吃碰槓的牌；第二排：動作按鈕（右邊放聽牌資訊）；第三排：手牌
   el.innerHTML = `<div class="mehead">${seatHead(D, me)}` +
     `<div class="row mel">${P.flowers.map(f => tileHTML(f, 'md')).join('')}${P.flowers.length && P.melds.length ? '<span class="sep"></span>' : ''}${P.melds.map(m => meldHTML(m, true, 'md')).join('')}</div></div>` +
-    `<div class="actions">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}` +
+    `<div class="actions"><div class="acts-main">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}</div>` +
     `${hint ? `<span class="ting">${hint}</span>` : ''}</div>` +
     `<div class="hand ${canDiscard ? 'can' : ''}">${disp.map((t, i) =>
       (coverDraw && i === drawnIdx ? tileHTML(null, 'gap covered') :
