@@ -103,6 +103,13 @@ button,select{font:inherit}
 @media (hover:hover){.hand.can .tile:hover{transform:translateY(-5px)}}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
+/* 新的一局：手牌先蓋著，再從左到右一張張翻開 */
+.hand .tile.deal{animation:dealflip .32s ease-in-out backwards;animation-delay:var(--dd)}
+.hand .tile.deal::before{content:"";position:absolute;inset:0;background:inherit;background-position:75% 100%;border-radius:inherit;
+  opacity:0;animation:dealback .32s linear backwards;animation-delay:var(--dd)}
+@keyframes dealflip{0%{transform:scaleX(1)}50%{transform:scaleX(0)}100%{transform:scaleX(1)}}
+@keyframes dealback{0%,50%{opacity:1}50.1%,100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.hand .tile.deal{animation:none}.hand .tile.deal::before{animation-duration:.01s}}
 .hand .tile.tp::after{content:"";position:absolute;top:-8px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--gold)}
 .hint{font-size:13px;color:var(--muted);min-height:20px;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .hint .tile{--tw:17px}
@@ -673,7 +680,7 @@ async function playRound() {
   }
   S.players[G.dealer].hand.push(takeFront());
   for (let k = 0; k < 4; k++) replaceFlowersAtDeal((G.dealer + k) % 4);
-  render(); await sleep(500);
+  render(); await sleep(Math.max(500, DEAL_MS / G.speed));   // 等大家的手牌翻開（不受出牌速度影響）
 
   let cur = G.dealer, needDraw = false, canSelf = true, kongDraw = false;
   while (true) {
@@ -981,6 +988,7 @@ function renderMe(D) {
   // 打出後可聽牌的標記
   const tpSet = new Set();
   if (canDiscard && G.hint) for (const t of new Set(P.hand)) { const h = P.hand.slice(); removeOne(h, t); if (waitsOf(h, held).length) tpSet.add(t); }
+  const dealDelay = dealDelays(D);
 
   curActions = []; let msg = '';
   if (canDiscard) {
@@ -1001,7 +1009,7 @@ function renderMe(D) {
   const cd = pr && pr.deadline ? `<span class="cd" data-dl="${+pr.deadline}"></span>` : '';
 
   let hint = '';
-  if (G.hint && !D.reveal) {
+  if (G.hint && !D.reveal && dealDelay(disp.length - 1) == null) {   // 翻牌時先不顯示聽牌提示
     if (canDiscard && selIdx >= 0 && selIdx < disp.length) {
       const h = P.hand.slice(); removeOne(h, disp[selIdx]);
       const ws = waitsOf(h, held);
@@ -1018,8 +1026,27 @@ function renderMe(D) {
     `<div class="actions">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}` +
     `${hint ? `<span class="ting">${hint}</span>` : ''}</div>` +
     `<div class="hand ${canDiscard ? 'can' : ''}">${disp.map((t, i) =>
-      tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '')).replace('<div class="tile', `<div data-i="${i}" class="tile`)).join('')}</div>`;
+      tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '') + (dealDelay(i) != null ? ' deal' : ''))
+        .replace('<div class="tile', `<div data-i="${i}" class="tile`).replace('style="', dealDelay(i) != null ? `style="--dd:${dealDelay(i)}ms;` : 'style="')).join('')}</div>`;
   tickCountdown();
+}
+// 開局翻牌動畫：每局只播一次。畫面重畫時用負的延遲接著播，不會從頭重來
+const DEAL_START = 250, DEAL_STEP = 65, DEAL_FLIP = 320;
+const DEAL_MS = DEAL_START + 16 * DEAL_STEP + DEAL_FLIP + 250;     // 等翻完再開始打（多留一點給連線延遲）
+let dealFx = { key: null, t0: 0 }, dealT = 0;
+function dealDelays(D) {
+  const fresh = !D.reveal && D.commit && D.v.discards.every(d => !d.length) && D.v.melds.every(m => !m.length);
+  if (fresh && dealFx.key !== D.commit) {
+    dealFx = { key: D.commit, t0: performance.now() };
+    clearTimeout(dealT);
+    dealT = setTimeout(() => { if (lastD) draw(lastD); }, DEAL_MS);   // 翻完後重畫一次，拿掉動畫
+  }
+  const el = performance.now() - dealFx.t0;
+  return i => {
+    if (dealFx.key !== D.commit) return null;
+    const d = DEAL_START + i * DEAL_STEP - el;
+    return d + DEAL_FLIP > 0 ? Math.round(d) : null;
+  };
 }
 let lastD = null, lastSeq = null;
 function draw(D) {
