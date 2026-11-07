@@ -80,7 +80,17 @@ button,select{font:inherit}
 .mid .big{font-size:20px;color:var(--text);font-weight:800}
 .mid code{font-size:11px;color:#d6e9dc}
 
-.me{grid-area:me;background:rgba(0,0,0,.18);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
+.me{grid-area:me;background:rgba(0,0,0,.18);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent;position:relative}
+/* 對手吃碰槓胡的提示：在那位對手的座位上跳出（位置由程式算），2 秒後淡出；不擋點擊 */
+.callfx{position:fixed;left:50%;top:50%;z-index:15;pointer-events:none;display:flex;align-items:center;gap:8px;white-space:nowrap;
+  padding:10px 24px;border-radius:14px;font-size:28px;font-weight:900;color:#222;background:#f6efdc;
+  border:3px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.55);animation:callfx 2.2s ease-out forwards}
+.callfx .tile{--tw:36px}
+.callfx.chow{background:#5dade2}.callfx.pung{background:#f2c14e}.callfx.kong{background:#9b59b6;color:#fff}.callfx.win{background:#e74c3c;color:#fff}
+@keyframes callfx{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}10%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}
+  18%,80%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
+@media (prefers-reduced-motion:reduce){.callfx{animation-name:callfxfade}}
+@keyframes callfxfade{0%,80%{opacity:1;transform:translate(-50%,-50%)}100%{opacity:0;transform:translate(-50%,-50%)}}
 /* 動作列：吃碰槓胡按鈕與提示放在正中間（左右兩欄等寬），聽牌資訊靠右 */
 .actions{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;min-height:36px}
 .acts-main{grid-column:2;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:inherit;min-width:0}
@@ -300,6 +310,7 @@ button,select{font:inherit}
   .actions .msg{font-size:14px}.actions .msg .tile{--tw:24px}
   .me .cd{font-size:15px}
   .ting{font-size:12px;gap:3px}.ting .tile{--tw:18px}
+  .callfx{font-size:19px;padding:6px 16px;border-radius:11px}.callfx .tile{--tw:24px}
   .hand{grid-area:hand;height:calc(var(--hw)*1.36 + 12px);min-height:0;padding-top:10px;overflow-y:hidden}
   .hand .tile.sel{transform:translateY(-8px)!important}
   .hand .tile.tp::after{top:-6px}
@@ -748,8 +759,8 @@ async function playRound() {
     }
     if (act.type === 'ankong' || act.type === 'kakan') {
       const t = act.tile;
-      if (act.type === 'ankong') { for (let i = 0; i < 4; i++) removeOne(P.hand, t); P.melds.push({ type: 'ankong', tiles: [t, t, t, t] }); addLog(`${nameOf(cur)} 暗槓`); }
-      else { removeOne(P.hand, t); const m = P.melds.find(m => m.type === 'pung' && m.tiles[0] === t); m.type = 'kong'; m.tiles.push(t); addLog(`${nameOf(cur)} 加槓 ${tName(t)}`); }
+      if (act.type === 'ankong') { for (let i = 0; i < 4; i++) removeOne(P.hand, t); P.melds.push({ type: 'ankong', tiles: [t, t, t, t] }); addLog(`${nameOf(cur)} 暗槓`); callFx(cur, 'ankong', null, null); }
+      else { removeOne(P.hand, t); const m = P.melds.find(m => m.type === 'pung' && m.tiles[0] === t); m.type = 'kong'; m.tiles.push(t); addLog(`${nameOf(cur)} 加槓 ${tName(t)}`); callFx(cur, 'kakan', t, null); }
       S.drawn = null; render(); await sleep(450);
       const d = drawFor(cur, true); if (d === null) return { type: 'draw' };
       S.drawn = d; kongDraw = true; canSelf = true; needDraw = false;
@@ -771,6 +782,7 @@ async function playRound() {
       if (claim.type === 'pung') { removeOne(Q.hand, t); removeOne(Q.hand, t); Q.melds.push({ type: 'pung', tiles: [t, t, t], from: cur }); addLog(`${nameOf(q)} 碰 ${tName(t)}`); }
       else if (claim.type === 'kong') { for (let i = 0; i < 3; i++) removeOne(Q.hand, t); Q.melds.push({ type: 'kong', tiles: [t, t, t, t], from: cur }); addLog(`${nameOf(q)} 明槓 ${tName(t)}`); }
       else { for (const x of claim.use) removeOne(Q.hand, x); Q.melds.push({ type: 'chow', tiles: [...claim.use, t].sort(byNum), from: cur }); addLog(`${nameOf(q)} 吃 ${tName(t)}`); }
+      callFx(q, claim.type, t, cur);
       cur = q; S.cur = q; render(); await sleep(400);
       if (claim.type === 'kong') {
         const d = drawFor(q, true); if (d === null) return { type: 'draw' };
@@ -898,6 +910,7 @@ function settleWin(p, from, tile, flags) {
   }
   for (let i = 0; i < 4; i++) G.scores[i] += pays[i];
   addLog(flags.selfDraw ? `${nameOf(p)} 自摸 ${tName(tile)}！` : `${nameOf(p)} 胡 ${nameOf(from)} 的 ${tName(tile)}！`);
+  callFx(p, flags.selfDraw ? 'tsumo' : 'win', tile, from);
   return { type: 'win', p, from, tile, sc, pays, detail, selfDraw: flags.selfDraw };
 }
 
@@ -926,6 +939,7 @@ function buildDisplay(me) {
     reveal: S.reveal ? S.players.map(P => ({ hand: P.hand.slice(), melds: P.melds.map(m => ({ type: m.type, tiles: m.tiles.slice() })) })) : null,
     prompt: pr ? { seq: pr.seq, kind: pr.kind, data: pr.data, deadline: pr.deadline } : null,
     result: G.result, over: G.over,
+    call: S.callFx || null,
     pause: G.pauseInfo ? { id: G.pauseInfo.id, off: [...G.offSeats], voters: pauseVoters(), votes: { ...G.pauseInfo.votes }, deadline: G.pauseInfo.deadline } : null,
     notice: S.notice && S.notice.to.includes(me) ? { mine: S.notice.mine[S.notice.to.indexOf(me)], by: S.notice.by, type: S.notice.type, t: S.notice.t } : null
   };
@@ -1089,6 +1103,38 @@ function renderMe(D) {
         .replace('<div class="tile', `<div data-i="${i}" class="tile`).replace('style="', dealDelay(i) != null ? `style="--dd:${dealDelay(i)}ms;` : 'style="')).join('')}</div>`;
   tickCountdown();
 }
+// 對手吃、碰、槓、胡：記下來（所有人都看得到），在那位對手的座位上跳出提示
+const CALLFX_MS = 2200, CALLFX_WIN_MS = 1500;
+function callFx(p, type, tile, from) { S.callFx = { p, type, tile, from, t: NET.now() }; }
+let callT = 0, callKey = null;
+function drawCallFx(D) {
+  let el = $('callfx');
+  const c = D && D.call, age = c ? NET.now() - c.t : Infinity;
+  if (!c || c.p === D.me || D.reveal || age >= CALLFX_MS) { if (el) el.remove(); callKey = null; return; }
+  const key = [c.t, c.p, c.type].join('|');
+  if (key !== callKey || !el) {
+    // 新的動作：換一個新的提示框，動畫從頭播（中途重畫只改位置，動畫不會重來）
+    if (el) el.remove();
+    callKey = key;
+    const who = esc(dispName(D, c.p)), tl = c.tile != null ? tileHTML(c.tile) : '';
+    const txt = {
+      chow: `${who} 吃 ${tl}`, pung: `${who} 碰 ${tl}`, kong: `${who} 槓 ${tl}`, kakan: `${who} 加槓 ${tl}`, ankong: `${who} 暗槓`,
+      tsumo: `${who} 自摸！${tl}`, win: `${who} 胡了 ${esc(dispName(D, c.from))} 的 ${tl}`
+    }[c.type] || '';
+    el = document.createElement('div');
+    el.id = 'callfx'; el.setAttribute('role', 'status');
+    el.className = 'callfx ' + (c.type === 'tsumo' || c.type === 'win' ? 'win' : c.type === 'chow' ? 'chow' : c.type === 'pung' ? 'pung' : 'kong');
+    el.innerHTML = txt;
+    el.style.animationDelay = `-${Math.round(Math.max(0, age))}ms`;
+    document.body.appendChild(el);
+    clearTimeout(callT); callT = setTimeout(() => drawCallFx(lastD), CALLFX_MS - age + 50);   // 時間到拿掉
+  }
+  // 放在那位對手座位的正中間；左右兩家欄位很窄，超出畫面時往內移
+  const seat = $('seat' + ((c.p - D.me + 4) % 4)).getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight, m = 8;
+  el.style.left = Math.min(Math.max(seat.left + seat.width / 2, w / 2 + m), innerWidth - w / 2 - m) + 'px';
+  el.style.top = Math.min(Math.max(seat.top + seat.height / 2, h / 2 + m), innerHeight - h / 2 - m) + 'px';
+}
 // 吃／碰沒成立時的說明（顯示 4 秒）
 const CALL = { chow: '吃', pung: '碰', kong: '槓', win: '胡' }, NOTICE_MS = 4000;
 let noticeT = 0;
@@ -1127,6 +1173,7 @@ function draw(D) {
     (D.room ? ` · 房號 ${D.room}` : '') + (NET.hostAway ? ' · 房主連線中斷，等待中…' : '');
   for (let k = 1; k < 4; k++) renderOpp(D, (D.me + k) % 4);
   renderRivers(D); renderMe(D);
+  drawCallFx(D);
   drawPause(D);
 }
 function render() {
@@ -1277,6 +1324,7 @@ async function gameLoop() {
   try {
     while (true) {
       const res = await playRound();
+      if (res.type === 'win' && G.seats.some((s, i) => i !== res.p && s.type !== 'ai')) { render(); await sleep(CALLFX_WIN_MS / G.speed); }   // 先讓大家看到「某某 胡了」，再出結算（不受出牌速度影響）
       await showResult(res);
       advance(res);
       if (G.scores.some(s => s <= 0)) { await showGameOver('有玩家分數歸零。'); return; }
@@ -2024,6 +2072,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 function clearTable() {
   for (const id of ['seat0', 'seat1', 'seat2', 'seat3', 'river0', 'river1', 'river2', 'river3', 'mid']) $(id).innerHTML = '';
   $('meta').textContent = ''; lastD = null;
+  drawCallFx(null);
 }
 function setMode() {
   $('btnNew').textContent = NET.role ? '離開' : '新遊戲';
