@@ -104,9 +104,10 @@ button,select{font:inherit}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
 .actions .notice{color:#ffd88a;font-weight:700}
-.stakerow{display:flex;align-items:center;gap:8px}
+.stakerow{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap}
 .stakerow label{font-size:14px;font-weight:700;flex:none}
-.stakerow input{flex:1;min-width:0}
+.stakerow input{flex:1 1 70px;min-width:70px}
+.stakerow #stStart{flex-basis:100px}
 .brand .ver{font-size:12px;font-weight:400;color:var(--muted)}
 .card .ver{margin:10px 0 0;font-size:12px;text-align:right}
 /* 新的一局：手牌先蓋著，再從左到右一張張亮出來（牌背蓋在牌面上，時間到就拿掉） */
@@ -348,7 +349,7 @@ button,select{font:inherit}
    0-8 萬、9-17 筒、18-26 條、27-30 東南西北、31-33 中發白、34-41 春夏秋冬梅蘭菊竹 */
 const NUM = '一二三四五六七八九', SUITS = '萬筒條', HON = '東南西北中發白', FLW = '春夏秋冬梅蘭菊竹', WINDS = '東南西北';
 const BASE = 300, PER_TAI = 100, START = 20000, KEEP = 16;   // 預設底 300、每台 100（大廳可改）、留 16 張不摸
-const STAKE_MAX = 100000;
+const STAKE_MAX = 100000, START_MIN = 100, START_MAX = 10000000;
 const tName = t => t < 27 ? NUM[t % 9] + SUITS[(t / 9) | 0] : t < 34 ? HON[t - 27] : FLW[t - 34];
 const isTerm = t => t < 27 && (t % 9 === 0 || t % 9 === 8);
 const byNum = (a, b) => a - b;
@@ -1251,7 +1252,8 @@ function newGame() {
   stopGame();
   closeModal();
   const st = G.mode === 'host' && NET.stake ? NET.stake : getStake();
-  Object.assign(G, { base: st.base, perTai: st.tai, gid: randHex(4), scores: [START, START, START, START], dealer: randInt(4), streak: 0, moves: 0, round: 0, roundWind: 0, logs: [], result: null, over: null });
+  const s0 = okStart(st.start) ? st.start : START;
+  Object.assign(G, { base: st.base, perTai: st.tai, gid: randHex(4), scores: [s0, s0, s0, s0], dealer: randInt(4), streak: 0, moves: 0, round: 0, roundWind: 0, logs: [], result: null, over: null });
   addLog(`擲骰決定起莊：${nameOf(G.dealer)}`);
   gameLoop();
 }
@@ -1267,7 +1269,7 @@ const RULES = `<h2>規則說明</h2>
 <li>144 張牌（含 8 張花），每人 16 張，莊家 17 張；胡牌需 5 組面子＋1 對將。</li>
 <li>摸到花牌立即補花（從牌尾補）。牌山最後 16 張不摸，摸完即流局，莊家連莊。</li>
 <li>只能吃上家的牌；碰、槓、胡任何人皆可。優先順序：胡 ＞ 碰/槓 ＞ 吃；多人可胡時由出牌者下家起算最近者（截胡）。</li>
-<li>計分：底＋台數×每台（預設底 ${BASE}、每台 ${PER_TAI}，可在大廳更改；連線時用房主的設定）。每人起始 ${START.toLocaleString()} 分。放槍由放槍者付，自摸三家各付。莊家與連莊台數只算莊家相關的那一筆。</li>
+<li>計分：底＋台數×每台（預設底 ${BASE}、每台 ${PER_TAI}，可在大廳更改；連線時用房主的設定）。每人起始分數預設 ${START.toLocaleString()}（也可在大廳更改），有人分數歸零就結束這一將。放槍由放槍者付，自摸三家各付。莊家與連莊台數只算莊家相關的那一筆。</li>
 <li>台數：莊家1、連N拉N 2N、門清1、自摸1、門清自摸3、正花1、春夏秋冬/梅蘭菊竹2、八仙過海8、三元牌1、圈風/門風1、小三元4、大三元8、小四喜8、大四喜16、碰碰胡4、三暗刻2、四暗刻5、五暗刻8、混一色4、清一色8、字一色16、平胡2、全求人2、獨聽1、槓上開花1、海底撈月1、河底撈魚1、天胡24。</li>
 <li>本版本未實作：搶槓、七搶一/八仙過海直接胡、相公判定。</li>
 </ul>
@@ -1394,16 +1396,20 @@ function getNick() { try { return store().getItem('mj_nick') || localStorage.get
 function setNick(n) { try { store().setItem('mj_nick', n); } catch (e) {} }
 // 底與每台：記在這台裝置。單人和自己開的房間用這個；加入別人的房間時用房主的
 const okStake = n => Number.isInteger(n) && n >= 1 && n <= STAKE_MAX;
+const okStart = n => Number.isInteger(n) && n >= START_MIN && n <= START_MAX;
 function getStake() {
   let s = null; try { s = JSON.parse(localStorage.getItem('mj_stake') || 'null'); } catch (e) {}
-  return s && okStake(s.base) && okStake(s.tai) ? s : { base: BASE, tai: PER_TAI };
+  const d = { base: BASE, tai: PER_TAI, start: START };
+  if (!s || !okStake(s.base) || !okStake(s.tai)) return d;
+  return { base: s.base, tai: s.tai, start: okStart(s.start) ? s.start : START };
 }
 function setStake(s) { try { localStorage.setItem('mj_stake', JSON.stringify(s)); } catch (e) {} }
-// 讀大廳的兩個欄位；不合格就顯示訊息並回傳 null
+// 讀大廳的三個欄位；不合格就顯示訊息並回傳 null
 function readStakeInputs() {
-  const b = Number($('stBase').value), t = Number($('stTai').value);
+  const b = Number($('stBase').value), t = Number($('stTai').value), st = Number($('stStart').value);
   if (!okStake(b) || !okStake(t)) { $('lbMsg').textContent = `底和每台要是 1 到 ${STAKE_MAX.toLocaleString()} 之間的整數。`; return null; }
-  const s = { base: b, tai: t }; setStake(s); return s;
+  if (!okStart(st)) { $('lbMsg').textContent = `起始分數要是 ${START_MIN.toLocaleString()} 到 ${START_MAX.toLocaleString()} 之間的整數。`; return null; }
+  const s = { base: b, tai: t, start: st }; setStake(s); return s;
 }
 
 /* ================= 帳號與戰績 =================
@@ -1698,7 +1704,7 @@ async function createRoom(nick, open) {
   const stake = getStake();
   for (let i = 0; i < 8 && !code; i++) {
     const c = String(10000 + randInt(90000));
-    const r = await NET.db.ref(`rooms/${c}/meta`).transaction(cur => cur ? undefined : { host: NET.uid, status: 'waiting', open: !!open, t: Date.now(), base: stake.base, tai: stake.tai });
+    const r = await NET.db.ref(`rooms/${c}/meta`).transaction(cur => cur ? undefined : { host: NET.uid, status: 'waiting', open: !!open, t: Date.now(), base: stake.base, tai: stake.tai, start: stake.start });
     if (r.committed) code = c;
   }
   if (!code) throw new Error('開房失敗，請再試一次');
@@ -1746,7 +1752,7 @@ async function joinRoom(nick, code) {
     const m = s.val();
     if (!m || m.ended) { if (NET.role === 'client') { NET.leave(); showLobby(m && m.ended ? m.ended : '房主已經離開，牌局結束了。'); } return; }
     NET.status = m.status; NET.open = !!m.open; NET.hostUid = m.host;
-    NET.stake = m.base && m.tai ? { base: m.base, tai: m.tai } : null;
+    NET.stake = m.base && m.tai ? { base: m.base, tai: m.tai, start: m.start || START } : null;
     if (m.status === 'playing') seatRef.onDisconnect().cancel();
     if (m.status === 'waiting') drawWaiting();
   });
@@ -1786,7 +1792,7 @@ function drawWaiting() {
     ${NET.open ? `<p>正在幫你找其他玩家（${n}/4）。湊滿四人會自動開始。</p>`
       : `<p>房號</p><p class="code">${esc(NET.code)}</p><p>把房號傳給朋友，在大廳的「輸入房號」加入。</p>`}
     <ul class="seatlist">${seats.map(s => `<li>${s ? esc(s.name) + (s.uid === NET.uid ? '（你）' : '') + (NET.online[s.uid] ? '' : ' <small>離線</small>') : '<span class="muted">等待加入…</span>'}</li>`).join('')}</ul>
-    ${NET.stake ? `<p>這個房間：<b>底 ${(+NET.stake.base).toLocaleString()} / 每台 ${(+NET.stake.tai).toLocaleString()}</b></p>` : ''}
+    ${NET.stake ? `<p>這個房間：<b>底 ${(+NET.stake.base).toLocaleString()} / 每台 ${(+NET.stake.tai).toLocaleString()} / 每人 ${(+(NET.stake.start || START)).toLocaleString()} 分</b></p>` : ''}
     <p class="muted">${host ? '按開始後，空位由電腦代打。' : '等待房主開始遊戲…'}</p>
     <div class="btns"><button class="btn alt" id="wrLeave">離開</button>${host ? `<button class="btn" id="wrStart">${NET.open && n < 4 ? '不等了，電腦補位開始' : '開始遊戲'}</button>` : ''}</div>`);
   $('wrLeave').onclick = () => { NET.leave(); showLobby(); };
@@ -1995,8 +2001,9 @@ function showLobby(msg) {
       <div class="stakerow">
         <label for="stBase">底</label><input id="stBase" type="number" inputmode="numeric" min="1" max="${STAKE_MAX}" step="1" value="${getStake().base}">
         <label for="stTai">每台</label><input id="stTai" type="number" inputmode="numeric" min="1" max="${STAKE_MAX}" step="1" value="${getStake().tai}">
+        <label for="stStart">每人分數</label><input id="stStart" type="number" inputmode="numeric" min="${START_MIN}" max="${START_MAX}" step="1000" value="${getStake().start}">
       </div>
-      <small class="muted">底和每台用在單人遊戲和你開的房間；加入別人的房間時，用房主的設定。</small>
+      <small class="muted">底、每台、每人起始分數用在單人遊戲和你開的房間；加入別人的房間時，用房主的設定。</small>
       ${rejoin ? `<button class="btn big" id="lbRejoin">回到房間 ${esc(saved.code)}<small>剛才離開的連線牌局</small></button>` : ''}
       <button class="btn big" id="lbSolo">單人遊戲<small>對三家電腦，不用網路</small></button>
       <button class="btn big" id="lbQuick">自動配對<small>和線上玩家湊滿四人，人不夠可以電腦補位</small></button>
