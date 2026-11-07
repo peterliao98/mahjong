@@ -104,6 +104,8 @@ button,select{font:inherit}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
 .actions .notice{color:#ffd88a;font-weight:700}
+.brand .ver{font-size:12px;font-weight:400;color:var(--muted)}
+.card .ver{margin:10px 0 0;font-size:12px;text-align:right}
 /* 新的一局：手牌先蓋著，再從左到右一張張亮出來（牌背蓋在牌面上，時間到就拿掉） */
 .hand .tile.deal::before{content:"";position:absolute;inset:0;background:inherit;background-position:75% 100%;border-radius:inherit;
   opacity:0;animation:dealback .02s step-end backwards;animation-delay:var(--dd)}
@@ -303,7 +305,7 @@ button,select{font:inherit}
 </head>
 <body>
 <header class="bar">
-  <div class="brand">🀄 台灣十六張麻將</div>
+  <div class="brand">🀄 台灣十六張麻將 <small class="ver" id="verBar"></small></div>
   <div class="meta" id="meta"></div>
   <div class="ctrls">
     <label><input type="checkbox" id="optHint" checked> 聽牌提示</label>
@@ -1975,7 +1977,9 @@ function showLobby(msg) {
       <div class="joinrow"><input id="code" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="輸入 5 位數房號"><button class="btn" id="lbJoin">加入</button></div>
       <p class="lbmsg" id="lbMsg" role="status"></p>
     </div>
-    <details><summary>規則說明</summary>${RULES.replace('<h2>規則說明</h2>', '')}</details>`);
+    <details><summary>規則說明</summary>${RULES.replace('<h2>規則說明</h2>', '')}</details>
+    <p class="muted ver" id="lbVer"></p>`);
+  showVersion();
   NET.modalKind = 'lobby';
   drawAcct();
   const go = fn => async () => {
@@ -2034,6 +2038,16 @@ $('btnUpdate').onclick = () => {
   modal(`<h2>更新到新版本？</h2><p>${S || NET.role ? '目前這場牌局會結束。' : ''}更新只要幾秒鐘。</p><div class="btns"><button class="btn alt" id="mclose">等一下</button><button class="btn" id="mok">更新</button></div>`);
   $('mclose').onclick = closeModal; $('mok').onclick = () => { NET.leave(); location.reload(); };
 };
+
+// 版本號：從 sw.js 讀（只要改 sw.js 一個地方），顯示在大廳下方與選單
+let APP_VER = '';
+function showVersion() {
+  if ($('verBar')) $('verBar').textContent = APP_VER;
+  if ($('lbVer')) $('lbVer').textContent = APP_VER ? '版本 ' + APP_VER : '';
+}
+fetch('sw.js', { cache: 'no-cache' }).then(r => r.text()).then(t => {
+  const m = t.match(/mahjong16-(v\d+)/); if (m) { APP_VER = m[1]; showVersion(); }
+}).catch(() => {});
 
 // 開始畫面：大廳。上次有登入帳號就在背景連線，恢復登入並送出還沒送的戰績
 showLobby();
