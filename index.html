@@ -103,6 +103,7 @@ button,select{font:inherit}
 @media (hover:hover){.hand.can .tile:hover{transform:translateY(-5px)}}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
+.actions .notice{color:#ffd88a;font-weight:700}
 /* 新的一局：手牌先蓋著，再從左到右一張張亮出來（牌背蓋在牌面上，時間到就拿掉） */
 .hand .tile.deal::before{content:"";position:absolute;inset:0;background:inherit;background-position:75% 100%;border-radius:inherit;
   opacity:0;animation:dealback .02s step-end backwards;animation-delay:var(--dd)}
@@ -759,19 +760,26 @@ async function resolveClaims(from, t) {
   await Promise.all(asks.map(async o => { hc.set(o.p, await waitHuman(o.p, 'claim', { tile: t, from, opts: o })); }));
   const dec = (o, stage) => isHuman(o.p) ? hc.get(o.p) : AI.claim(viewFor(o.p), t,
     stage === 'win' ? o : stage === 'pung' ? { ...o, win: false, chow: [] } : { ...o, win: false, pung: false, kong: false });
-  for (const o of info) {
-    if (!o.win) continue;
-    const d = dec(o, 'win'); if (d && d.type === 'win') return { type: 'win', p: o.p };
-  }
-  for (const o of info) {
-    if (!o.pung && !o.kong) continue;
-    const d = dec(o, 'pung'); if (d && (d.type === 'pung' || d.type === 'kong')) return { type: d.type, p: o.p };
-  }
-  for (const o of info) {
-    if (!o.chow.length) continue;
-    const d = dec(o, 'chow'); if (d && d.type === 'chow') return { type: 'chow', p: o.p, use: d.use };
-  }
-  return null;
+  const pick = () => {
+    for (const o of info) {
+      if (!o.win) continue;
+      const d = dec(o, 'win'); if (d && d.type === 'win') return { type: 'win', p: o.p };
+    }
+    for (const o of info) {
+      if (!o.pung && !o.kong) continue;
+      const d = dec(o, 'pung'); if (d && (d.type === 'pung' || d.type === 'kong')) return { type: d.type, p: o.p };
+    }
+    for (const o of info) {
+      if (!o.chow.length) continue;
+      const d = dec(o, 'chow'); if (d && d.type === 'chow') return { type: 'chow', p: o.p, use: d.use };
+    }
+    return null;
+  };
+  const r = pick();
+  // 真人按了吃／碰，卻被優先順序更高的人拿走：記下來，畫面上告訴他原因
+  const lost = r ? asks.filter(o => o.p !== r.p && hc.get(o.p) && hc.get(o.p).type !== 'pass') : [];
+  if (lost.length) S.notice = { to: lost.map(o => o.p), mine: lost.map(o => hc.get(o.p).type), by: r.p, type: r.type, t: NET.now() };
+  return r;
 }
 
 /* ---------- 算台 ---------- */
@@ -876,7 +884,8 @@ function buildDisplay(me) {
     cur: S.cur, last: S.last, drawn: S.cur === me ? S.drawn : null, commit: S.commit,
     reveal: S.reveal ? S.players.map(P => ({ hand: P.hand.slice(), melds: P.melds.map(m => ({ type: m.type, tiles: m.tiles.slice() })) })) : null,
     prompt: pr ? { seq: pr.seq, kind: pr.kind, data: pr.data, deadline: pr.deadline } : null,
-    result: G.result, over: G.over
+    result: G.result, over: G.over,
+    notice: S.notice && S.notice.to.includes(me) ? { mine: S.notice.mine[S.notice.to.indexOf(me)], by: S.notice.by, type: S.notice.type, t: S.notice.t } : null
   };
 }
 // 從 me 的角度稱呼座位 q
@@ -1003,6 +1012,7 @@ function renderMe(D) {
     for (const use of opts.chow) curActions.push({ label: '吃 ' + [...use, tile].sort(byNum).map(x => tileHTML(x)).join(''), cls: 'chow', v: { type: 'chow', use } });
     curActions.push({ label: '過', cls: 'pass', v: { type: 'pass' } });
   }
+  if (!msg && !curActions.length) msg = noticeHTML(D);
   const cd = pr && pr.deadline ? `<span class="cd" data-dl="${+pr.deadline}"></span>` : '';
 
   let hint = '';
@@ -1026,6 +1036,17 @@ function renderMe(D) {
       tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '') + (dealDelay(i) != null ? ' deal' : ''))
         .replace('<div class="tile', `<div data-i="${i}" class="tile`).replace('style="', dealDelay(i) != null ? `style="--dd:${dealDelay(i)}ms;` : 'style="')).join('')}</div>`;
   tickCountdown();
+}
+// 吃／碰沒成立時的說明（顯示 4 秒）
+const CALL = { chow: '吃', pung: '碰', kong: '槓', win: '胡' }, NOTICE_MS = 4000;
+let noticeT = 0;
+function noticeHTML(D) {
+  const n = D.notice; if (!n || D.reveal) return '';
+  const left = NOTICE_MS - (NET.now() - n.t);
+  if (left <= 0) return '';
+  clearTimeout(noticeT); noticeT = setTimeout(() => { if (lastD) draw(lastD); }, left + 50);
+  const a = CALL[n.mine] || '吃', b = CALL[n.type] || '';
+  return `<span class="notice">沒${a}到：${esc(dispName(D, n.by))} ${b}了這張牌（${b}比${a}優先）</span>`;
 }
 // 開局亮牌：每局只播一次，從最左邊那張開始往右亮。畫面重畫時用負的延遲接著播，不會從頭重來
 const DEAL_START = 300, DEAL_STEP = 70, DEAL_FLIP = 20;
@@ -1905,8 +1926,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 // 測試用：只暴露分析函式（不含任何遊戲狀態）
-window.__mjTest = { sha256, shantenC, canWin, counts, allDecomps, waitsOf, tileHTML };
-})();
+window.__mjTest = { sha256, shantenC, canWin, counts, allDecomps, waitsOf, tileHTML };})();
 </script>
 </body>
 </html>
