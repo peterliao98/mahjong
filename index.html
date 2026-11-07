@@ -83,9 +83,9 @@ button,select{font:inherit}
 .me{grid-area:me;background:rgba(0,0,0,.18);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent;position:relative}
 /* 對手吃碰槓胡的提示：在那位對手的座位上跳出（位置由程式算），2 秒後淡出；不擋點擊 */
 .callfx{position:fixed;left:50%;top:50%;z-index:15;pointer-events:none;display:flex;align-items:center;gap:8px;white-space:nowrap;
-  padding:10px 24px;border-radius:14px;font-size:28px;font-weight:900;color:#222;background:#f6efdc;
+  padding:8px 26px;border-radius:16px;font-size:44px;line-height:1.1;font-weight:900;letter-spacing:2px;color:#222;background:#f6efdc;
   border:3px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.55);animation:callfx 2.2s ease-out forwards}
-.callfx .tile{--tw:36px}
+.callfx .tile{--tw:40px}
 .callfx.chow{background:#5dade2}.callfx.pung{background:#f2c14e}.callfx.kong{background:#9b59b6;color:#fff}.callfx.win{background:#e74c3c;color:#fff}
 @keyframes callfx{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}10%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}
   18%,80%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
@@ -310,7 +310,7 @@ button,select{font:inherit}
   .actions .msg{font-size:14px}.actions .msg .tile{--tw:24px}
   .me .cd{font-size:15px}
   .ting{font-size:12px;gap:3px}.ting .tile{--tw:18px}
-  .callfx{font-size:19px;padding:6px 16px;border-radius:11px}.callfx .tile{--tw:24px}
+  .callfx{font-size:28px;padding:4px 14px;border-radius:12px;gap:6px}.callfx .tile{--tw:26px}
   .hand{grid-area:hand;height:calc(var(--hw)*1.36 + 12px);min-height:0;padding-top:10px;overflow-y:hidden}
   .hand .tile.sel{transform:translateY(-8px)!important}
   .hand .tile.tp::after{top:-6px}
@@ -1116,11 +1116,9 @@ function drawCallFx(D) {
     // 新的動作：換一個新的提示框，動畫從頭播（中途重畫只改位置，動畫不會重來）
     if (el) el.remove();
     callKey = key;
-    const who = esc(dispName(D, c.p)), tl = c.tile != null ? tileHTML(c.tile) : '';
-    const txt = {
-      chow: `${who} 吃 ${tl}`, pung: `${who} 碰 ${tl}`, kong: `${who} 槓 ${tl}`, kakan: `${who} 加槓 ${tl}`, ankong: `${who} 暗槓`,
-      tsumo: `${who} 自摸！${tl}`, win: `${who} 胡了 ${esc(dispName(D, c.from))} 的 ${tl}`
-    }[c.type] || '';
+    // 只顯示動作和那張牌（座位已經表示是誰；暗槓不公開是哪張）
+    const word = { chow: '吃', pung: '碰', kong: '槓', kakan: '槓', ankong: '槓', tsumo: '自摸', win: '胡' }[c.type] || '';
+    const txt = word + (c.tile != null && c.type !== 'ankong' ? tileHTML(c.tile) : '');
     el = document.createElement('div');
     el.id = 'callfx'; el.setAttribute('role', 'status');
     el.className = 'callfx ' + (c.type === 'tsumo' || c.type === 'win' ? 'win' : c.type === 'chow' ? 'chow' : c.type === 'pung' ? 'pung' : 'kong');
