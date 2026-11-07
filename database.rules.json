@@ -2,7 +2,9 @@
   "rules": {
     "lobby": {
       ".read": "auth != null",
-      ".indexOn": ["open"],
+      ".indexOn": [
+        "open"
+      ],
       "$code": {
         ".write": "auth != null && (!newData.exists() || root.child('rooms').child($code).child('meta/host').val() === auth.uid)"
       }
@@ -23,10 +25,14 @@
         },
         "online": {
           ".read": "auth != null",
-          "$uid": { ".write": "auth != null && auth.uid === $uid" }
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
         },
         "view": {
-          "$uid": { ".read": "auth != null && auth.uid === $uid" }
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid"
+          }
         },
         "act": {
           "$uid": {
@@ -34,6 +40,12 @@
             ".write": "auth != null && auth.uid === $uid"
           }
         }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && auth.provider === 'password' && auth.token.email_verified === true"
       }
     }
   }

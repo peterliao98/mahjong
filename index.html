@@ -161,6 +161,17 @@ button,select{font:inherit}
 .muted{color:#7a7363}
 .card details{margin-top:12px}.card summary{cursor:pointer;font-weight:700;font-size:15px}
 .cd{color:var(--gold);font-weight:800;margin-left:6px;font-variant-numeric:tabular-nums}
+/* 帳號與戰績 */
+.acct{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#efe6cf;border-radius:10px;padding:8px 10px}
+.acct .who{flex:1;min-width:0;font-size:15px}
+.card .acct .btn{padding:7px 14px;font-size:14px}
+.seg{display:flex;gap:0;margin:4px 0 6px;border-radius:9px;overflow:hidden;border:1px solid #d8cdb0}
+.seg button{flex:1;border:0;padding:9px;font:inherit;font-size:15px;font-weight:700;background:#fff;color:#555;cursor:pointer}
+.seg button.on{background:#1f6141;color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:6px 0 4px}
+.kpi{background:#efe6cf;border-radius:10px;padding:8px 10px}
+.kpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:13px;color:#6b6455}
 
 /* 觸控螢幕：按鈕加大好點 */
 @media (pointer:coarse){
@@ -854,7 +865,7 @@ function meldHTML(m, showAn, cls) {
 function buildDisplay(me) {
   const pr = prompts.get(me);
   return {
-    me, mode: G.mode, room: NET.code || null,
+    me, mode: G.mode, room: NET.code || null, gid: G.gid,
     v: { ...viewFor(me), handCounts: S.players.map(P => P.hand.length) },
     nick: G.seats.map(s => s.type === 'ai' ? null : (s.name || null)),
     scores: G.scores.slice(), dealer: G.dealer, streak: G.streak, round: G.round, roundWind: G.roundWind,
@@ -1130,6 +1141,7 @@ async function showResult(res) {
   G.lastFair = { round: G.round + 1, commit: S.commit, salt: S.salt, wall: S.wall.slice(), drawLog: S.drawLog.slice() };
   if (res.type === 'draw') addLog('流局（荒莊），莊家連莊。');
   G.result = resultData(res);
+  recordRound(G.result, localSeat(), statMode(), gameKey(G.round));
   render();
   const D = buildDisplay(0);
   // 連線玩家各自按「下一局」，全部按了（或超過時間）才開始
@@ -1149,6 +1161,7 @@ function advance(res) {
 async function showGameOver(reason) {
   const rank = [0, 1, 2, 3].sort((a, b) => G.scores[b] - G.scores[a]);
   G.over = { reason, rank, scores: G.scores.slice() };
+  recordMatch(G.over, localSeat(), statMode(), gameKey('over'), G.round);
   render();
   const v = await waitModal(gameOverHTML(G.over, buildDisplay(0)), [{ label: '回大廳', v: 'lobby', alt: true }, { label: '再來一將', v: 'again' }]);
   G.over = null;
@@ -1175,7 +1188,7 @@ function stopGame() {
 function newGame() {
   stopGame();
   closeModal();
-  Object.assign(G, { scores: [START, START, START, START], dealer: randInt(4), streak: 0, moves: 0, round: 0, roundWind: 0, logs: [], result: null, over: null });
+  Object.assign(G, { gid: randHex(4), scores: [START, START, START, START], dealer: randInt(4), streak: 0, moves: 0, round: 0, roundWind: 0, logs: [], result: null, over: null });
   addLog(`擲骰決定起莊：${nameOf(G.dealer)}`);
   gameLoop();
 }
@@ -1276,11 +1289,13 @@ function connect() {
       window.FIREBASE_CONFIG ? null : loadScript('firebase-config.js')]);
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
     const auth = firebase.auth();
+    auth.languageCode = 'zh-TW';            // 驗證信、重設密碼信用中文
     // 測試用：網址加 ?test=1 時每個分頁各自是一位玩家
     if (TEST) await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
     let user = await new Promise(r => { const off = auth.onAuthStateChanged(u => { off(); r(u); }); });
     if (!user) user = (await auth.signInAnonymously()).user;
     NET.uid = user.uid;
+    setAcct(user);
     NET.db = firebase.database();
     NET.db.ref('.info/serverTimeOffset').on('value', s => { NET.offset = s.val() || 0; });
     NET.db.ref('.info/connected').on('value', s => { if (s.val()) onReconnect(); });
@@ -1293,6 +1308,7 @@ function connect() {
       const m = (await NET.db.ref(`rooms/${saved.code}/meta`).once('value').catch(() => null));
       if (m && m.val() && m.val().host === NET.uid) { NET.db.ref(`rooms/${saved.code}`).remove().catch(() => {}); NET.db.ref(`lobby/${saved.code}`).remove().catch(() => {}); }
     }
+    flushStats();
   })();
   fbReady.catch(() => { fbReady = null; });
   return fbReady;
@@ -1312,6 +1328,293 @@ function saveRoom(r) { try { r ? store().setItem('mj_room', JSON.stringify(r)) :
 function loadRoom() { try { return JSON.parse(store().getItem('mj_room') || 'null'); } catch (e) { return null; } }
 function getNick() { try { return store().getItem('mj_nick') || localStorage.getItem('mj_nick') || ''; } catch (e) { return ''; } }
 function setNick(n) { try { store().setItem('mj_nick', n); } catch (e) {} }
+
+/* ================= 帳號與戰績 =================
+   用 Firebase 的「電子郵件＋密碼」登入，信箱要點過驗證信才算數（一個信箱只能註冊一個帳號）。
+   戰績存在 users/自己的uid，只有自己讀寫得到。沒網路時先存在這台，連上後再送出。 */
+const ACC = { uid: null, name: null, unverified: null };   // unverified：已登入但信箱還沒驗證
+const NAME_RE = /^[\p{L}\p{N}_]{2,8}$/u;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function savedAcct() { try { return store().getItem('mj_acct') || ''; } catch (e) { return ''; } }
+function setAcct(user) {
+  const was = ACC.uid + '|' + ACC.unverified;
+  ACC.uid = ACC.name = ACC.unverified = null;
+  if (user && !user.isAnonymous) {
+    if (user.emailVerified) { ACC.uid = user.uid; ACC.name = user.displayName || '玩家'; }
+    else ACC.unverified = user.email || '';
+  }
+  try { ACC.name ? store().setItem('mj_acct', ACC.name) : store().removeItem('mj_acct'); } catch (e) {}
+  if (was !== ACC.uid + '|' + ACC.unverified && NET.modalKind === 'lobby') drawAcct();
+}
+const localSeat = () => G.seats.findIndex(s => s.type === 'local');
+const statMode = () => G.mode === 'solo' ? 'solo' : 'online';
+const gameKey = k => `${G.mode === 'solo' ? 'solo' : NET.code}|${G.gid}|${k}`;
+
+// 同一局只記一次（連線玩家可能重新收到同一份結算）
+function markRecorded(key) {
+  key = ACC.uid + '|' + key;
+  let list = [];
+  try { list = JSON.parse(store().getItem('mj_rec') || '[]'); } catch (e) {}
+  if (list.includes(key)) return false;
+  list.push(key);
+  try { store().setItem('mj_rec', JSON.stringify(list.slice(-60))); } catch (e) {}
+  return true;
+}
+function loadQueue() { try { return JSON.parse(store().getItem('mj_statq') || '[]'); } catch (e) { return []; } }
+function saveQueue(q) { try { store().setItem('mj_statq', JSON.stringify(q)); } catch (e) {} }
+function enqueueStat(item) {
+  const q = loadQueue(); q.push({ id: randHex(6), uid: ACC.uid, ...item }); saveQueue(q);
+  flushStats();
+}
+let flushing = false;
+async function flushStats() {
+  if (flushing || !loadQueue().length) return;
+  flushing = true;
+  try {
+    await connect();
+    for (const it of loadQueue()) {
+      if (it.uid !== ACC.uid) continue;          // 別的帳號留下的，等那個帳號登入再送
+      const inc = firebase.database.ServerValue.increment, base = `users/${it.uid}/stats/${it.mode}/`, u = {};
+      for (const [k, v] of Object.entries(it.s)) if (v) u[base + k] = inc(v);
+      u[base + 'last'] = it.t;
+      if (it.hist) u[`users/${it.uid}/history/${it.t}_${it.id}`] = it.hist;
+      if (ACC.name) u[`users/${it.uid}/profile/name`] = ACC.name;
+      await NET.db.ref().update(u);
+      if (it.tai != null) await NET.db.ref(base + 'maxTai').transaction(cur => (cur || 0) >= it.tai ? undefined : it.tai);
+      saveQueue(loadQueue().filter(x => x.id !== it.id));
+    }
+    if (loadQueue().some(x => x.uid === ACC.uid)) setTimeout(flushStats, 0);   // 送出期間又打完的局
+  } catch (e) { console.warn('戰績暫時送不出去，下次連線再送', e); }
+  finally { flushing = false; }
+}
+function recordRound(R, me, mode, key) {
+  if (!ACC.uid || !R || me < 0 || !markRecorded(key)) return;
+  const s = { rounds: 1 }; let tai = null;
+  if (R.draw) s.draws = 1;
+  else {
+    s.net = R.pays[me];
+    if (R.p === me) { tai = R.total + R.dealerTai; s.wins = 1; s.taiSum = tai; if (R.selfDraw) s.selfDraws = 1; }
+    else if (R.from === me) s.dealIns = 1;
+    else if (R.selfDraw) s.paidSelfDraw = 1;
+  }
+  enqueueStat({ mode, s, tai, t: Date.now() });
+}
+function recordMatch(O, me, mode, key, rounds) {
+  if (!ACC.uid || !O || me < 0 || !markRecorded(key)) return;
+  const rank = O.rank.indexOf(me) + 1, t = Date.now();
+  enqueueStat({ mode, s: { matches: 1, firsts: rank === 1 ? 1 : 0 }, t,
+    hist: { t, mode, rank, score: O.scores[me], rounds: rounds || 0, reason: String(O.reason || '').slice(0, 20) } });
+}
+
+function authMsg(e) {
+  const c = (e && e.code) || '';
+  if (/email-already-in-use/.test(c)) return '這個信箱已經註冊過了，請直接登入（忘記密碼可以重設）。';
+  if (/invalid-email|missing-email/.test(c)) return '信箱格式不對。';
+  if (/invalid-credential|wrong-password|user-not-found|invalid-login/.test(c)) return '信箱或密碼不對。';
+  if (/weak-password/.test(c)) return '密碼至少要 6 個字。';
+  if (/operation-not-allowed|configuration-not-found/.test(c)) return '伺服器還沒開啟帳號功能（Firebase 要開啟「電子郵件/密碼」登入）。';
+  if (/too-many-requests/.test(c)) return '嘗試太多次了，請等幾分鐘再試。';
+  if (/network/.test(c)) return '網路連不上，請確認後再試一次。';
+  return e && /[一-鿿]/.test(e.message || '') ? e.message : '發生錯誤，請再試一次。';
+}
+async function afterAuth(user) {
+  if (NET.uid !== user.uid) saveRoom(null);       // 換了身分，舊的「回到房間」不能用了
+  NET.uid = user.uid;
+  setAcct(user);
+  if (ACC.uid) { if (!getNick()) setNick(ACC.name.slice(0, 8)); flushStats(); }
+}
+const busy = on => $('modalCard').querySelectorAll('button').forEach(b => b.disabled = on);
+// mode：login 登入、reg 註冊、reset 忘記密碼
+function acctModal(mode) {
+  const reg = mode === 'reg', reset = mode === 'reset';
+  modal(`<h2>${reg ? '註冊新帳號' : reset ? '重設密碼' : '登入'}</h2>
+    <p class="muted">${reset ? '輸入註冊時的信箱，我們會寄一封重設密碼的信給你。' : '用信箱註冊，一個信箱只能有一個帳號。換手機或電腦登入同一個帳號，戰績都在。'}</p>
+    ${reset ? '' : `<div class="seg" role="tablist"><button id="acTabL" class="${reg ? '' : 'on'}" role="tab" aria-selected="${!reg}">登入</button><button id="acTabR" class="${reg ? 'on' : ''}" role="tab" aria-selected="${reg}">註冊新帳號</button></div>`}
+    <form class="lobby" id="acForm" autocomplete="on" novalidate>
+      <label class="fld" for="acMail">電子信箱</label>
+      <input id="acMail" name="email" type="email" inputmode="email" autocomplete="${reg ? 'email' : 'username'}" autocapitalize="off" spellcheck="false" placeholder="you@example.com">
+      ${reg ? `<label class="fld" for="acName">暱稱（打牌時其他人看到的名字）</label>
+      <input id="acName" maxlength="8" autocomplete="nickname" placeholder="2–8 個字，中英文、數字都可以" value="${esc(getNick())}">` : ''}
+      ${reset ? '' : `<label class="fld" for="acPw">密碼</label>
+      <input id="acPw" name="password" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" placeholder="至少 6 個字">`}
+      ${reg ? `<label class="fld" for="acPw2">再輸入一次密碼</label><input id="acPw2" type="password" autocomplete="new-password">` : ''}
+      <p class="lbmsg" id="acMsg" role="status"></p>
+      <div class="btns" style="margin-top:0">
+        ${mode === 'login' ? '<button type="button" class="btn alt" id="acForgot">忘記密碼</button>' : ''}
+        <button type="button" class="btn alt" id="acBack">返回</button>
+        <button type="submit" class="btn" id="acGo">${reg ? '註冊' : reset ? '寄重設信' : '登入'}</button>
+      </div>
+    </form>`);
+  NET.modalKind = 'acct';
+  if (!reset) { $('acTabL').onclick = () => acctModal('login'); $('acTabR').onclick = () => acctModal('reg'); }
+  if ($('acForgot')) $('acForgot').onclick = () => { const m = $('acMail').value; acctModal('reset'); $('acMail').value = m; };
+  $('acBack').onclick = () => reset ? acctModal('login') : showLobby();
+  $('acForm').onsubmit = async e => {
+    e.preventDefault();
+    const mail = $('acMail').value.trim(), msg = $('acMsg');
+    msg.className = 'lbmsg';
+    if (!EMAIL_RE.test(mail)) { msg.textContent = '請輸入正確的電子信箱。'; return; }
+    let name = '', pw = '';
+    if (!reset) {
+      pw = $('acPw').value;
+      if (pw.length < 6) { msg.textContent = '密碼至少要 6 個字。'; return; }
+    }
+    if (reg) {
+      name = $('acName').value.trim();
+      if (!NAME_RE.test(name)) { msg.textContent = '暱稱要 2–8 個字，只能用中英文、數字或底線。'; return; }
+      if (pw !== $('acPw2').value) { msg.textContent = '兩次輸入的密碼不一樣。'; return; }
+    }
+    msg.textContent = '連線中…'; busy(true);
+    try {
+      await connect();
+      const auth = firebase.auth();
+      if (reset) {
+        await auth.sendPasswordResetEmail(mail);
+        msg.className = 'lbmsg ok';
+        msg.textContent = '如果這個信箱有註冊過，重設密碼的信已經寄出了。照信裡的連結設定新密碼，再回來登入。';
+        busy(false); return;
+      }
+      let user;
+      if (reg) {
+        user = (await auth.createUserWithEmailAndPassword(mail, pw)).user;
+        await user.updateProfile({ displayName: name });
+        setNick(name);
+        await user.sendEmailVerification().catch(err => console.warn(err));
+      } else user = (await auth.signInWithEmailAndPassword(mail, pw)).user;
+      await afterAuth(user);
+      if (ACC.unverified != null) verifyModal(reg ? '' : '這個信箱還沒驗證。');
+      else showLobby();
+    } catch (err) {
+      console.warn(err);
+      if ($('acMsg')) { $('acMsg').textContent = authMsg(err); busy(false); }
+    }
+  };
+  $('acMail').focus();
+}
+// 等使用者去信箱點驗證連結
+function verifyModal(note) {
+  modal(`<h2>📧 請到信箱完成驗證</h2>
+    ${note ? `<p class="bad">${esc(note)}</p>` : ''}
+    <p>驗證信已經寄到 <b>${esc(ACC.unverified)}</b>。打開信、點裡面的連結，再回來按「我已經驗證了」。</p>
+    <p class="muted">找不到信的話，看看垃圾郵件匣。驗證完成前，打牌不會記錄戰績。</p>
+    <p class="lbmsg" id="vfMsg" role="status"></p>
+    <div class="btns"><button class="btn alt" id="vfOut">登出</button><button class="btn alt" id="vfResend">重寄驗證信</button><button class="btn" id="vfCheck">我已經驗證了</button></div>`);
+  NET.modalKind = 'verify';
+  $('vfOut').onclick = logout;
+  $('vfResend').onclick = async () => {
+    busy(true);
+    try { await firebase.auth().currentUser.sendEmailVerification(); $('vfMsg').className = 'lbmsg ok'; $('vfMsg').textContent = '已經重寄了，請到信箱查看。'; }
+    catch (e) { console.warn(e); $('vfMsg').className = 'lbmsg'; $('vfMsg').textContent = authMsg(e); }
+    busy(false);
+  };
+  $('vfCheck').onclick = () => checkVerified(true);
+}
+async function checkVerified(showMiss) {
+  const user = window.firebase && firebase.auth().currentUser;
+  if (!user || user.isAnonymous) return;
+  if ($('vfMsg')) { busy(true); $('vfMsg').className = 'lbmsg'; $('vfMsg').textContent = '確認中…'; }
+  try {
+    await user.reload();
+    if (user.emailVerified) {
+      await user.getIdToken(true);                 // 換一張新的登入憑證，資料庫才知道已驗證
+      await afterAuth(user);
+      showLobby();
+      return;
+    }
+    if (showMiss && $('vfMsg')) $('vfMsg').textContent = '還沒收到驗證。請先點信裡的連結，再按一次。';
+  } catch (e) { console.warn(e); if ($('vfMsg')) $('vfMsg').textContent = authMsg(e); }
+  if ($('vfMsg')) { busy(false); if (!showMiss) $('vfMsg').textContent = ''; }
+}
+// 從信箱切回來時自動確認一次
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && NET.modalKind === 'verify') checkVerified(false); });
+async function logout() {
+  try {
+    await connect();
+    const auth = firebase.auth();
+    await auth.signOut();
+    await afterAuth((await auth.signInAnonymously()).user);
+  } catch (e) { console.warn(e); setAcct(null); }
+  showLobby();
+}
+// 大廳上方的帳號列
+function drawAcct() {
+  const el = $('lbAcct'); if (!el) return;
+  if (ACC.unverified != null) {
+    el.innerHTML = `<span class="who">📧 <b>${esc(ACC.unverified)}</b> <small class="bad">信箱還沒驗證</small></span><button class="btn" id="lbVerify">去驗證</button><button class="btn alt" id="lbLogout">登出</button>`;
+    $('lbVerify').onclick = () => verifyModal(''); $('lbLogout').onclick = logout;
+    return;
+  }
+  const name = ACC.name || savedAcct();
+  el.innerHTML = name
+    ? `<span class="who">👤 <b>${esc(name)}</b>${ACC.uid ? '' : ' <small class="muted">連線中…</small>'}</span><button class="btn" id="lbStats">我的戰績</button><button class="btn alt" id="lbLogout">登出</button>`
+    : `<span class="who muted">登入後每一局的勝負都會記錄下來</span><button class="btn" id="lbLogin">登入 / 註冊</button>`;
+  if (name) { $('lbStats').onclick = showStats; $('lbLogout').onclick = logout; }
+  else $('lbLogin').onclick = () => acctModal('login');
+  const nk = $('nick');
+  if (ACC.name && nk && !nk.value) nk.value = ACC.name.slice(0, 8);
+}
+
+const pct = (a, b) => b ? ((+a || 0) / b * 100).toFixed(1) + '%' : '—';
+const fmtNet = n => `<span class="${n > 0 ? 'pos' : n < 0 ? 'neg' : ''}">${n > 0 ? '+' : ''}${(+n || 0).toLocaleString()}</span>`;
+async function showStats() {
+  modal(`<h2>我的戰績</h2><p class="muted">讀取中…</p>`);
+  NET.modalKind = 'stats';
+  let st = {}, hist = [];
+  try {
+    await connect();
+    if (!ACC.uid) throw new Error('請先登入');
+    const [a, b] = await Promise.all([
+      NET.db.ref(`users/${ACC.uid}/stats`).once('value'),
+      NET.db.ref(`users/${ACC.uid}/history`).orderByKey().limitToLast(20).once('value')
+    ]);
+    st = a.val() || {}; hist = Object.values(b.val() || {}).reverse();
+  } catch (e) {
+    console.warn(e);
+    modal(`<h2>我的戰績</h2><p class="bad">${esc(authMsg(e))}</p><div class="btns"><button class="btn" id="stBack">返回</button></div>`);
+    $('stBack').onclick = () => showLobby();
+    return;
+  }
+  // 還沒送出的（離線時打的）也算進去
+  for (const it of loadQueue()) {
+    if (it.uid !== ACC.uid) continue;
+    const m = st[it.mode] = st[it.mode] || {};
+    for (const [k, v] of Object.entries(it.s)) m[k] = (m[k] || 0) + (v || 0);
+    if (it.tai != null) m.maxTai = Math.max(m.maxTai || 0, it.tai);
+    if (it.hist) hist.unshift(it.hist);
+  }
+  const solo = st.solo || {}, onl = st.online || {}, keys = ['rounds', 'wins', 'selfDraws', 'dealIns', 'paidSelfDraw', 'draws', 'net', 'taiSum', 'matches', 'firsts'];
+  const all = {}; for (const k of keys) all[k] = (solo[k] || 0) + (onl[k] || 0);
+  all.maxTai = Math.max(solo.maxTai || 0, onl.maxTai || 0);
+  const row = (label, f) => `<tr><td>${label}</td>${[all, solo, onl].map(x => `<td class="num">${f(x)}</td>`).join('')}</tr>`;
+  const n = x => (+x || 0).toLocaleString();
+  modal(`<div class="rhead"><h2>👤 ${esc(ACC.name)} 的戰績</h2><button class="btn" id="stBack">返回</button></div>
+    <div class="kpis">
+      <div class="kpi"><b>${n(all.rounds)}</b><span>總局數</span></div>
+      <div class="kpi"><b>${n(all.wins)}</b><span>胡牌（${pct(all.wins, all.rounds)}）</span></div>
+      <div class="kpi"><b>${n(all.selfDraws)}</b><span>自摸</span></div>
+      <div class="kpi"><b>${n(all.dealIns)}</b><span>放槍（${pct(all.dealIns, all.rounds)}）</span></div>
+      <div class="kpi"><b>${fmtNet(all.net)}</b><span>累計輸贏</span></div>
+    </div>
+    <h3>明細</h3>
+    <table><tr><th></th><th class="num">全部</th><th class="num">單人</th><th class="num">連線</th></tr>
+      ${row('總局數', x => n(x.rounds))}
+      ${row('胡牌', x => `${n(x.wins)} <small class="muted">${pct(x.wins, x.rounds)}</small>`)}
+      ${row('　其中自摸', x => n(x.selfDraws))}
+      ${row('放槍', x => `${n(x.dealIns)} <small class="muted">${pct(x.dealIns, x.rounds)}</small>`)}
+      ${row('被自摸', x => n(x.paidSelfDraw))}
+      ${row('流局', x => n(x.draws))}
+      ${row('胡牌平均台數', x => x.wins ? (x.taiSum / x.wins).toFixed(1) : '—')}
+      ${row('最大一把', x => x.maxTai ? x.maxTai + ' 台' : '—')}
+      ${row('累計輸贏', x => fmtNet(x.net))}
+      ${row('打完的將數', x => n(x.matches))}
+      ${row('拿第一名', x => `${n(x.firsts)} <small class="muted">${pct(x.firsts, x.matches)}</small>`)}
+    </table>
+    <h3>最近打完的將</h3>
+    ${hist.length ? `<table><tr><th>時間</th><th>模式</th><th class="num">局數</th><th class="num">名次</th><th class="num">最後分數</th></tr>
+      ${hist.slice(0, 20).map(h => `<tr><td>${esc(new Date(h.t).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td>${h.mode === 'solo' ? '單人' : '連線'}</td><td class="num">${+h.rounds || 0}</td><td class="num">第 ${+h.rank} 名</td><td class="num">${(+h.score).toLocaleString()}</td></tr>`).join('')}</table>`
+      : `<p class="muted">還沒有打完一整將的紀錄（四圈打完或有人分數歸零才算一將）。每一局的勝負已經有記錄在上面。</p>`}`);
+  $('stBack').onclick = () => showLobby();
+}
 
 async function createRoom(nick, open) {
   let code = null;
@@ -1431,6 +1734,10 @@ function clientDraw(D) {
   if (D.lastFair) NET.lastFair = D.lastFair;
   if (NET.modalKind === 'waiting' || NET.modalKind === 'lobby') { closeModal(); NET.modalKind = null; keepAwake(); }
   draw(D);
+  if (D.gid) {
+    if (D.result) recordRound(D.result, D.me, 'online', `${D.room}|${D.gid}|${D.round}`);
+    if (D.over) recordMatch(D.over, D.me, 'online', `${D.room}|${D.gid}|over`, D.round);
+  }
   if (D.over) {
     const key = JSON.stringify(D.over);
     if (NET.shownOver !== key) {
@@ -1485,6 +1792,7 @@ function showLobby(msg) {
   modal(`<h2>🀄 台灣十六張麻將</h2>
     ${msg ? `<p class="bad">${esc(msg)}</p>` : ''}
     <div class="lobby">
+      <div class="acct" id="lbAcct"></div>
       <label class="fld" for="nick">你的暱稱（連線時其他人看到的名字）</label>
       <input id="nick" maxlength="8" autocomplete="off" value="${esc(getNick())}" placeholder="最多 8 個字">
       ${rejoin ? `<button class="btn big" id="lbRejoin">回到房間 ${esc(saved.code)}<small>剛才離開的連線牌局</small></button>` : ''}
@@ -1496,6 +1804,7 @@ function showLobby(msg) {
     </div>
     <details><summary>規則說明</summary>${RULES.replace('<h2>規則說明</h2>', '')}</details>`);
   NET.modalKind = 'lobby';
+  drawAcct();
   const go = fn => async () => {
     const nick = ($('nick').value || '').trim().slice(0, 8);
     if (!nick) { $('lbMsg').textContent = '請先輸入暱稱。'; $('nick').focus(); return; }
@@ -1553,8 +1862,9 @@ $('btnUpdate').onclick = () => {
   $('mclose').onclick = closeModal; $('mok').onclick = () => { NET.leave(); location.reload(); };
 };
 
-// 開始畫面：大廳
+// 開始畫面：大廳。上次有登入帳號就在背景連線，恢復登入並送出還沒送的戰績
 showLobby();
+if (savedAcct() || loadQueue().length) connect().then(() => { if (NET.modalKind === 'lobby') drawAcct(); }).catch(() => {});
 
 // 放在網站上時註冊離線快取（直接開檔案時不會執行）
 // 自動更新：打開或切回 App 時檢查新版；在大廳就直接換新版，打牌中則顯示「有新版本」按鈕
