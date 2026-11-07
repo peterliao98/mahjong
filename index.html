@@ -112,9 +112,11 @@ button,select{font:inherit}
 @media (hover:hover){.hand.can .tile:hover{transform:translateY(-5px)}}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
-/* 聽牌時蓋著的摸牌：輕輕跳動，提示點它翻開 */
-.hand .tile.covered{cursor:pointer;animation:covered 1.1s ease-in-out infinite;outline:3px solid var(--gold);outline-offset:1px}
-@keyframes covered{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+/* 聽牌時蓋著的摸牌：輕輕跳動，提示點它翻開。
+   金框畫在牌的內側；整段跳動都在原位置之上（最低點也比原位置高），不會被手牌區下緣切掉 */
+.hand .tile.covered{cursor:pointer;animation:covered 1.1s ease-in-out infinite;transform:translateY(-3px);
+  box-shadow:inset 0 0 0 3px var(--gold),0 2px 4px rgba(0,0,0,.4)}
+@keyframes covered{0%,100%{transform:translateY(-3px)}50%{transform:translateY(-8px)}}
 @media (prefers-reduced-motion:reduce){.hand .tile.covered{animation:none}}
 .actions .notice{color:#ffd88a;font-weight:700}
 .stakerow{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap}
