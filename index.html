@@ -49,11 +49,20 @@ button,select{font:inherit}
 .s2 .row{justify-content:flex-start}
 .s1{grid-area:s1;width:calc(var(--xw)*4 + 25px)}
 .s3{grid-area:s3;width:calc(var(--xw)*4 + 25px)}
-/* 左右兩家：一排 4 張，手牌那排先留 5 排（17 張）的高度 */
-.s1 .row.hrow,.s3 .row.hrow{min-height:calc(var(--xw)*1.36*5 + 12px);align-content:flex-start}
-/* 左右兩家的名字區固定兩行：第一行風位＋名字，第二行莊家＋分數 */
-.s1 .head,.s3 .head{height:3em;align-content:flex-start;overflow:hidden;line-height:1.4}
-.s1 .head b,.s3 .head b{width:calc(100% - 2.4em);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 左右兩家：一排 4 張。手牌那排先留好「最多可能有幾張」的高度（沒吃碰時 5 排＝17 張，每吃碰一次少 3 張）
+   名字與分數固定在上方不會被擠扁，下面的牌放不下時只有牌那一區捲動 */
+.s1 .row.hrow,.s3 .row.hrow{min-height:calc((var(--xw)*1.36 + 3px)*var(--hn,5) - 3px);align-content:flex-start}
+.s1,.s3{overflow:hidden}
+.s1 > .head,.s3 > .head{flex:none}
+.sbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:inherit;overflow-y:auto;overflow-x:hidden}
+.sbody > *{flex:none}
+.s1 .head,.s3 .head{line-height:1.4}
+/* 左右兩家的名字區（欄位很窄）：第一行風位＋名字（太長就截斷）；是莊家時多一行「莊」；最後一行分數。
+   莊家只在換局時改變，所以下面的牌不會在打牌中移動 */
+.s1 .head,.s3 .head{display:grid;grid-template-columns:auto minmax(0,1fr);height:auto;overflow:visible;gap:2px 4px;align-items:center}
+.s1 .head b,.s3 .head b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s1 .head .dealer,.s3 .head .dealer{grid-column:1 / -1;justify-self:start;white-space:nowrap}
+.s1 .head .score,.s3 .head .score{grid-column:1 / -1;white-space:nowrap}
 .head{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:13px}
 .head b{font-size:14px}
 .wind{background:#f6efdc;color:#7a2a1d;border-radius:5px;padding:0 5px;font-weight:800}
@@ -103,6 +112,10 @@ button,select{font:inherit}
 @media (hover:hover){.hand.can .tile:hover{transform:translateY(-5px)}}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
+/* 聽牌時蓋著的摸牌：輕輕跳動，提示點它翻開 */
+.hand .tile.covered{cursor:pointer;animation:covered 1.1s ease-in-out infinite;outline:3px solid var(--gold);outline-offset:1px}
+@keyframes covered{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){.hand .tile.covered{animation:none}}
 .actions .notice{color:#ffd88a;font-weight:700}
 .stakerow{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap}
 .stakerow label{font-size:14px;font-weight:700;flex:none}
@@ -205,7 +218,7 @@ button,select{font:inherit}
   /* 對手：每一排先留好位置 */
   .seat .row{min-height:calc(var(--xw)*1.36)}
   .s2 .row{flex-wrap:nowrap}
-  .s1,.s3{overflow-y:auto;overflow-x:hidden}
+  .s1,.s3{overflow:hidden}
   /* 牌河：上下各留三排，左右兩家從上往下排，中間資訊不動 */
   #center{min-height:0;overflow:hidden;align-items:start;
     grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
@@ -253,7 +266,7 @@ button,select{font:inherit}
   .s2 .head{flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
   .s2 .head b{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .s2 .hrow .tile{--tw:10px}
-  .s1,.s3{width:calc(var(--xw)*4 + 25px);overflow-y:auto;overflow-x:hidden}
+  .s1,.s3{width:calc(var(--xw)*4 + 25px);overflow:hidden}
   .seat .row{min-height:calc(var(--xw)*1.36)}
   #center{min-height:0;overflow:hidden;align-items:start;padding:4px;gap:4px;border-radius:10px;
     grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
@@ -569,6 +582,7 @@ const G = {
   offSeats: new Set(), pauseInfo: null, pause: null, pauseRes: null   // 連線玩家離線：暫停並詢問大家要不要繼續
 };
 let S = null, selIdx = -1, curActions = [];
+let coverKey = null, drawCover = null;   // 聽牌時蓋著的摸牌：已翻開的是哪一次（prompt seq）、目前蓋著的位置
 const prompts = new Map();      // 座位 → 正在等的真人決定
 const ABORT = { abort: true };
 const isHuman = p => G.seats[p].type !== 'ai';
@@ -925,9 +939,11 @@ function renderOpp(D, q) {
   const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q];
   const fl = `<div class="row">${D.v.flowers[q].map(f => tileHTML(f, 'xs')).join('')}</div>`;
   const md = `<div class="row">${melds.map(m => meldHTML(m, !!D.reveal, 'xs')).join('')}</div>`;
-  const hd = `<div class="row hrow">${hand}</div>`;
-  // 對家：花牌、吃碰槓、手牌各一排；左右兩家：手牌（先留好 17 張的高度）→花牌→吃碰槓，新的牌只往下長，上面的不會被推動
-  el.innerHTML = seatHead(D, q) + (k === 2 ? fl + md + hd : hd + fl + md);
+  // 左右兩家手牌那排：依吃碰數預留高度（一排 4 張）
+  const hn = Math.max(1, Math.ceil((17 - 3 * melds.length) / 4));
+  const hd = `<div class="row hrow" style="--hn:${hn}">${hand}</div>`;
+  // 對家：花牌、吃碰槓、手牌各一排；左右兩家：名字固定在上，下面手牌→花牌→吃碰槓（放不下時這一區捲動）
+  el.innerHTML = seatHead(D, q) + (k === 2 ? fl + md + hd : `<div class="sbody">${hd + fl + md}</div>`);
 }
 /* 牌河放到最大：在中間區域裡試各種「每排幾張、共幾排」，挑牌最大的排法。
    每家先預留 24 張的位置（一般一局用不完），真的超過時才重新排、牌稍微變小 */
@@ -1008,13 +1024,19 @@ function renderMe(D) {
   const N = 5 - P.melds.length;
   const un = AI.unseen(D.v);
   const held = counts([...P.hand, ...P.melds.flatMap(m => m.tiles)]);
+  // 聽牌時摸進來的牌先蓋著，點一下才翻開（翻開前不顯示自摸、槓與聽牌提示，以免先洩漏）
+  const coverDraw = !!(canDiscard && drawnIdx >= 0 && !G.auto && !D.reveal && coverKey !== pr.seq && (() => {
+    const h = P.hand.slice(); removeOne(h, disp[drawnIdx]); return waitsOf(h, held).length > 0;
+  })());
+  drawCover = coverDraw ? { seq: pr.seq, idx: drawnIdx } : null;
   // 打出後可聽牌的標記
   const tpSet = new Set();
-  if (canDiscard && G.hint) for (const t of new Set(P.hand)) { const h = P.hand.slice(); removeOne(h, t); if (waitsOf(h, held).length) tpSet.add(t); }
+  if (canDiscard && G.hint && !coverDraw) for (const t of new Set(P.hand)) { const h = P.hand.slice(); removeOne(h, t); if (waitsOf(h, held).length) tpSet.add(t); }
   const dealDelay = dealDelays(D);
 
   curActions = []; let msg = '';
-  if (canDiscard) {
+  if (coverDraw) msg = '<span class="notice">聽牌中！點一下摸進來的牌翻開</span>';
+  else if (canDiscard) {
     const o = pr.data;
     if (o.tsumo) curActions.push({ label: '自摸', cls: 'win', v: { type: 'tsumo' } });
     for (const t of o.ankong) curActions.push({ label: '暗槓 ' + tileHTML(t), cls: 'kong', v: { type: 'ankong', tile: t } });
@@ -1033,7 +1055,7 @@ function renderMe(D) {
   const cd = pr && pr.deadline ? `<span class="cd" data-dl="${+pr.deadline}"></span>` : '';
 
   let hint = '';
-  if (G.hint && !D.reveal && dealDelay(disp.length - 1) == null) {   // 亮牌時先不顯示聽牌提示（最右邊那張最後亮）
+  if (G.hint && !D.reveal && !coverDraw && dealDelay(disp.length - 1) == null) {   // 亮牌時先不顯示聽牌提示（最右邊那張最後亮）
     if (canDiscard && selIdx >= 0 && selIdx < disp.length) {
       const h = P.hand.slice(); removeOne(h, disp[selIdx]);
       const ws = waitsOf(h, held);
@@ -1050,7 +1072,8 @@ function renderMe(D) {
     `<div class="actions">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}` +
     `${hint ? `<span class="ting">${hint}</span>` : ''}</div>` +
     `<div class="hand ${canDiscard ? 'can' : ''}">${disp.map((t, i) =>
-      tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '') + (dealDelay(i) != null ? ' deal' : ''))
+      (coverDraw && i === drawnIdx ? tileHTML(null, 'gap covered') :
+      tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '') + (dealDelay(i) != null ? ' deal' : '')))
         .replace('<div class="tile', `<div data-i="${i}" class="tile`).replace('style="', dealDelay(i) != null ? `style="--dd:${dealDelay(i)}ms;` : 'style="')).join('')}</div>`;
   tickCountdown();
 }
@@ -1116,6 +1139,11 @@ $('seat0').addEventListener('click', e => {
   const t = e.target.closest('[data-i]');
   if (t && lastD && lastD.prompt && lastD.prompt.kind === 'turn') {
     const i = +t.dataset.i;
+    // 聽牌時蓋著的那張：點它翻開；翻開前點其他牌沒有作用
+    if (drawCover && drawCover.seq === lastD.prompt.seq) {
+      if (i === drawCover.idx) { coverKey = drawCover.seq; selIdx = -1; draw(lastD); }
+      return;
+    }
     if (i === selIdx) { const { disp } = humanDisplay(lastD); respond({ type: 'discard', tile: disp[i] }); }
     else { selIdx = i; draw(lastD); }
   }
@@ -2103,7 +2131,8 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 // 測試用：只暴露分析函式（不含任何遊戲狀態）
-window.__mjTest = { sha256, shantenC, canWin, counts, allDecomps, waitsOf, tileHTML };})();
+window.__mjTest = { sha256, shantenC, canWin, counts, allDecomps, waitsOf, tileHTML };
+})();
 </script>
 </body>
 </html>
