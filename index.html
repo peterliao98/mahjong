@@ -557,7 +557,8 @@ const G = {
   auto: false, hint: true, speed: 1, lastFair: null, logs: [],
   mode: 'solo',                 // solo：單人；host：連線的房主（連線的其他玩家不跑遊戲引擎）
   seats: SOLO_SEATS(),          // 每個座位：local（這台）、remote（連線玩家）、ai（電腦）
-  seq: 0, result: null, over: null
+  seq: 0, result: null, over: null,
+  offSeats: new Set(), pauseInfo: null, pause: null, pauseRes: null   // 連線玩家離線：暫停並詢問大家要不要繼續
 };
 let S = null, selIdx = -1, curActions = [];
 const prompts = new Map();      // 座位 → 正在等的真人決定
@@ -584,7 +585,10 @@ function viewFor(p) {
 }
 
 function addLog(s) { G.logs.unshift(s); if (G.logs.length > 80) G.logs.pop(); const el = $('log'); if (el) el.innerHTML = G.logs.map(x => `<div>${esc(x)}</div>`).join(''); }
-async function sleep(ms) { const st = S; await new Promise(r => setTimeout(r, ms * G.speed)); if (st && st.dead) throw ABORT; }
+async function sleep(ms) {
+  const st = S; await new Promise(r => setTimeout(r, ms * G.speed)); if (st && st.dead) throw ABORT;
+  await pauseGate(); if (st && st.dead) throw ABORT;      // 有玩家離線、大家還在決定時，牌局停在這裡
+}
 
 function aiDecide(p, kind, data) {
   if (kind === 'next') return { type: 'next' };
@@ -628,11 +632,15 @@ function waitHuman(p, kind, data) {
       ai: () => pr.res(aiDecide(p, kind, data))
     };
     prompts.set(p, pr);
-    if (timeout) pr.timers.push(setTimeout(pr.ai, timeout));
-    if (p === 0 && G.auto && kind !== 'next') pr.timers.push(setTimeout(pr.ai, 300 * G.speed));
-    if (G.seats[p].type === 'remote') NET.promptRemote(pr);
+    if (G.pause) { pr.frozen = true; pr.deadline = 0; }    // 暫停中：先不倒數，繼續後再開始
+    else startPromptTimers(pr, timeout);
     render();
   });
+}
+function startPromptTimers(pr, timeout) {
+  if (timeout) pr.timers.push(setTimeout(pr.ai, timeout));
+  if (pr.p === 0 && G.auto && pr.kind !== 'next') pr.timers.push(setTimeout(pr.ai, 300 * G.speed));
+  if (G.seats[pr.p].type === 'remote') NET.promptRemote(pr);
 }
 function autoResolve() { const pr = prompts.get(0); if (pr && pr.kind !== 'next') pr.ai(); }
 
@@ -885,6 +893,7 @@ function buildDisplay(me) {
     reveal: S.reveal ? S.players.map(P => ({ hand: P.hand.slice(), melds: P.melds.map(m => ({ type: m.type, tiles: m.tiles.slice() })) })) : null,
     prompt: pr ? { seq: pr.seq, kind: pr.kind, data: pr.data, deadline: pr.deadline } : null,
     result: G.result, over: G.over,
+    pause: G.pauseInfo ? { id: G.pauseInfo.id, off: [...G.offSeats], voters: pauseVoters(), votes: { ...G.pauseInfo.votes }, deadline: G.pauseInfo.deadline } : null,
     notice: S.notice && S.notice.to.includes(me) ? { mine: S.notice.mine[S.notice.to.indexOf(me)], by: S.notice.by, type: S.notice.type, t: S.notice.t } : null
   };
 }
@@ -1075,6 +1084,7 @@ function draw(D) {
     (D.room ? ` · 房號 ${D.room}` : '') + (NET.hostAway ? ' · 房主連線中斷，等待中…' : '');
   for (let k = 1; k < 4; k++) renderOpp(D, (D.me + k) % 4);
   renderRivers(D); renderMe(D);
+  drawPause(D);
 }
 function render() {
   if (NET.role === 'client' || !S) return;   // 連線玩家的畫面由房主送來
@@ -1297,7 +1307,8 @@ const NET = {
       }
     }, 30);
   },
-  promptRemote(pr) { if (!this.online[G.seats[pr.p].uid]) pr.timers.push(setTimeout(pr.ai, 1500)); },
+  // 離線玩家：結算畫面的「下一局」直接代按；打牌中的決定等大家投票（見 watchOffline）
+  promptRemote(pr) { if (pr.kind === 'next' && !this.online[G.seats[pr.p].uid]) pr.timers.push(setTimeout(pr.ai, 1500)); },
   send(seq, a) {
     this.ref(`act/${this.uid}`).set({ seq, a: JSON.stringify(a) }).catch(e => console.warn(e));
     if (lastD) { lastD = { ...lastD, prompt: null }; draw(lastD); }
@@ -1682,7 +1693,7 @@ async function createRoom(nick, open) {
   NET.watch(`rooms/${code}/online`, s => {
     NET.online = s.val() || {};
     if (!NET.started) { drawWaiting(); return; }
-    for (const pr of prompts.values()) if (G.seats[pr.p].type === 'remote' && !NET.online[G.seats[pr.p].uid]) pr.timers.push(setTimeout(pr.ai, 1500));
+    watchOffline();
     render();
   });
 }
@@ -1692,7 +1703,10 @@ async function joinRoom(nick, code) {
   if (!meta) throw new Error('找不到這個房間');
   const seatsVal = (await NET.db.ref(`rooms/${code}/seats`).once('value')).val() || {};
   let seat = -1;
-  for (const [i, s] of Object.entries(seatsVal)) if (s && s.uid === NET.uid) seat = +i;
+  for (const [i, s] of Object.entries(seatsVal)) if (s && s.uid === NET.uid) {
+    if (s.ai) throw new Error('你離線的時候，大家決定繼續牌局，你的位子已經由電腦接手了。');
+    seat = +i;
+  }
   if (seat < 0) {
     if (meta.status !== 'waiting') throw new Error('這個房間已經開始了');
     for (let i = 1; i < 4 && seat < 0; i++) {
@@ -1708,7 +1722,7 @@ async function joinRoom(nick, code) {
   saveRoom({ code, role: 'client' });
   NET.watch(`rooms/${code}/meta`, s => {
     const m = s.val();
-    if (!m) { if (NET.role === 'client') { NET.leave(); showLobby('房主已經離開，牌局結束了。'); } return; }
+    if (!m || m.ended) { if (NET.role === 'client') { NET.leave(); showLobby(m && m.ended ? m.ended : '房主已經離開，牌局結束了。'); } return; }
     NET.status = m.status; NET.open = !!m.open; NET.hostUid = m.host;
     if (m.status === 'playing') seatRef.onDisconnect().cancel();
     if (m.status === 'waiting') drawWaiting();
@@ -1765,8 +1779,9 @@ async function startOnline() {
     if (s.type !== 'remote') return;
     NET.watch(`rooms/${NET.code}/act/${s.uid}`, snap => {
       const v = snap.val(); if (!v) return;
-      const pr = prompts.get(p); if (!pr || pr.seq !== v.seq) return;
       let a = null; try { a = JSON.parse(v.a); } catch (e) {}
+      if (G.pauseInfo && v.seq === G.pauseInfo.id) { onPauseVote(p, a && a.type); return; }
+      const pr = prompts.get(p); if (!pr || pr.seq !== v.seq) return;
       pr.res(validAct(p, pr.kind, pr.data, a) ? a : aiDecide(p, pr.kind, pr.data));
     });
   });
@@ -1774,8 +1789,121 @@ async function startOnline() {
   setMode(); keepAwake();
   newGame();
 }
+/* ---------- 連線玩家離線：暫停、大家投票、電腦接手（房主那台負責） ----------
+   離線超過 OFF_GRACE 才算數（手機切換網路常會短暫斷線）。打牌中就立刻暫停；
+   結算畫面時先等到下一局開始。所有在線的真人都按「繼續」才繼續，有人按「結束」整場就結束。
+   離線的人在大家決定前回來，就照常繼續。VOTE_MS 內沒回應的人視為繼續。 */
+const OFF_GRACE = 5000, VOTE_MS = 60000;
+const offTimers = {};
+function pauseVoters() {
+  return [0, 1, 2, 3].filter(p => G.seats[p].type === 'local' ||
+    (G.seats[p].type === 'remote' && NET.online[G.seats[p].uid] && !G.offSeats.has(p)));
+}
+function watchOffline() {
+  if (G.mode !== 'host') return;
+  G.seats.forEach((s, p) => {
+    if (s.type !== 'remote') return;
+    if (!NET.online[s.uid]) {
+      if (!offTimers[p] && !G.offSeats.has(p)) offTimers[p] = setTimeout(() => {
+        offTimers[p] = 0;
+        if (G.seats[p].type === 'remote' && !NET.online[G.seats[p].uid]) markOffline(p);
+      }, OFF_GRACE);
+    } else {
+      clearTimeout(offTimers[p]); offTimers[p] = 0;
+      if (G.offSeats.has(p)) { G.offSeats.delete(p); addLog(`${s.name} 回來了`); }
+    }
+  });
+  checkPause();
+}
+function markOffline(p) {
+  G.offSeats.add(p);
+  addLog(`${G.seats[p].name} 離線了`);
+  if (G.pauseInfo) { checkPause(); render(); }
+  else if (S && !G.result && !G.over) beginPause();       // 結算中就等下一局開始時（pauseGate）再問
+}
+async function pauseGate() {
+  if (G.mode === 'host' && G.offSeats.size && !G.pauseInfo && !G.result && !G.over) beginPause();
+  while (G.pause) await G.pause;
+}
+function beginPause() {
+  G.pauseInfo = { id: 'P' + (++G.seq), votes: {}, deadline: NET.now() + VOTE_MS };
+  G.pause = new Promise(r => { G.pauseRes = r; });
+  // 所有正在等的決定先停止倒數
+  for (const pr of prompts.values()) { pr.timers.forEach(clearTimeout); pr.timers = []; pr.frozen = true; pr.deadline = 0; }
+  G.pauseInfo.timer = setTimeout(() => finishPause(true), VOTE_MS);
+  render();
+}
+function checkPause() {
+  if (!G.pauseInfo) return;
+  if (!G.offSeats.size) return finishPause(false);            // 離線的人都回來了
+  if (pauseVoters().every(q => G.pauseInfo.votes[q])) finishPause(true);
+}
+function onPauseVote(p, choice) {
+  if (!G.pauseInfo) return;
+  if (choice === 'end') return endByVote(p);
+  G.pauseInfo.votes[p] = true;
+  checkPause(); render();
+}
+function finishPause(takeOver) {
+  if (!G.pauseInfo) return;
+  clearTimeout(G.pauseInfo.timer);
+  if (takeOver) for (const p of G.offSeats) {
+    const s = G.seats[p];
+    addLog(`${s.name} 改由電腦接手`);
+    G.seats[p] = { type: 'ai' };                                 // 名字會顯示成「電腦·上家」這類
+    NET.ref(`seats/${p}/ai`).set(true).catch(e => console.warn(e));
+    NET.ref(`view/${s.uid}`).set(JSON.stringify({ kicked: true })).catch(e => console.warn(e));
+    delete NET.lastSent[p];
+  }
+  G.offSeats.clear();
+  G.pauseInfo = null;
+  const res = G.pauseRes; G.pause = null; G.pauseRes = null;
+  // 恢復倒數；已經交給電腦的座位直接由電腦決定
+  for (const pr of [...prompts.values()]) {
+    if (!pr.frozen) continue;
+    pr.frozen = false;
+    if (G.seats[pr.p].type === 'ai') { pr.ai(); continue; }
+    const timeout = G.mode === 'host' ? (pr.kind === 'next' ? NEXT_MS : TURN_MS) : 0;
+    pr.deadline = timeout ? NET.now() + timeout : 0;
+    startPromptTimers(pr, timeout);
+  }
+  if (res) res();
+  render();
+}
+function endByVote(p) {
+  const msg = `${p === localSeat() ? '房主' : G.seats[p].name} 選擇結束牌局。`;
+  if (G.pauseInfo) clearTimeout(G.pauseInfo.timer);
+  const res = G.pauseRes;
+  Object.assign(G, { pauseInfo: null, pause: null, pauseRes: null }); G.offSeats.clear();
+  NET.ref('meta/ended').set(msg).catch(() => {}).finally(() => { NET.leave(); showLobby(msg); });
+  if (res) res();
+}
+// 暫停詢問的視窗（房主與連線玩家共用）
+let pauseKey = null;
+function pauseVote(choice, id) {
+  if (NET.role === 'client') NET.ref(`act/${NET.uid}`).set({ seq: id, a: JSON.stringify({ type: choice }) }).catch(e => console.warn(e));
+  else onPauseVote(localSeat(), choice);
+}
+function drawPause(D) {
+  const P = D.pause;
+  if (!P) { if (NET.modalKind === 'pause') { closeModal(); NET.modalKind = null; } pauseKey = null; return; }
+  const voter = P.voters.includes(D.me), voted = !!P.votes[D.me];
+  const waiting = P.voters.filter(q => !P.votes[q]).map(q => dispName(D, q));
+  const names = P.off.map(q => dispName(D, q)).join('、');
+  const key = [P.id, voted, waiting.join(','), names].join('|');
+  if (key === pauseKey) return;
+  pauseKey = key; NET.modalKind = 'pause';
+  modal(`<h2>⚠️ ${esc(names)} 離線了</h2>
+    <p>牌局先暫停。<b>所有人都按「繼續牌局」才會繼續</b>，${esc(names)} 的位子改由電腦接手（名字會變成「電腦」），之後就不能再回到這場牌局。</p>
+    ${voter && !voted ? `<div class="btns"><button class="btn alt" id="pzEnd">結束牌局</button><button class="btn" id="pzGo">繼續牌局</button></div>`
+      : `<p>${voted ? '你已經選擇繼續。' : ''}等待 ${esc(waiting.join('、') || '其他玩家')} 確認…</p>`}
+    <p class="muted">${esc(names)} 如果在大家決定前回來，就照常繼續。<span class="cd" data-dl="${+P.deadline}"></span>內沒有回應的人，視為同意繼續。</p>`);
+  tickCountdown();
+  if (voter && !voted) { $('pzGo').onclick = () => pauseVote('cont', P.id); $('pzEnd').onclick = () => pauseVote('end', P.id); }
+}
 // 連線玩家：收到房主送來的畫面資料
 function clientDraw(D) {
+  if (D.kicked) { NET.leave(); showLobby('你離線的時候，大家決定繼續牌局，你的位子已經由電腦接手了。'); return; }
   if (D.lastFair) NET.lastFair = D.lastFair;
   if (NET.modalKind === 'waiting' || NET.modalKind === 'lobby') { closeModal(); NET.modalKind = null; keepAwake(); }
   draw(D);
