@@ -103,7 +103,7 @@ button,select{font:inherit}
 @media (hover:hover){.hand.can .tile:hover{transform:translateY(-5px)}}
 .hand .tile.sel{transform:translateY(-14px)!important;outline:3px solid var(--gold);outline-offset:1px}
 .hand .tile.gap{margin-left:calc(var(--hw)*.45)}
-/* 新的一局：手牌先蓋著，再從右到左一張張亮出來（牌背蓋在牌面上，時間到就拿掉） */
+/* 新的一局：手牌先蓋著，再從左到右一張張亮出來（牌背蓋在牌面上，時間到就拿掉） */
 .hand .tile.deal::before{content:"";position:absolute;inset:0;background:inherit;background-position:75% 100%;border-radius:inherit;
   opacity:0;animation:dealback .02s step-end backwards;animation-delay:var(--dd)}
 @keyframes dealback{from{opacity:1}to{opacity:0}}
@@ -1006,7 +1006,7 @@ function renderMe(D) {
   const cd = pr && pr.deadline ? `<span class="cd" data-dl="${+pr.deadline}"></span>` : '';
 
   let hint = '';
-  if (G.hint && !D.reveal && dealDelay(0) == null) {   // 亮牌時先不顯示聽牌提示（最左邊那張最後亮）
+  if (G.hint && !D.reveal && dealDelay(disp.length - 1) == null) {   // 亮牌時先不顯示聽牌提示（最右邊那張最後亮）
     if (canDiscard && selIdx >= 0 && selIdx < disp.length) {
       const h = P.hand.slice(); removeOne(h, disp[selIdx]);
       const ws = waitsOf(h, held);
@@ -1027,7 +1027,7 @@ function renderMe(D) {
         .replace('<div class="tile', `<div data-i="${i}" class="tile`).replace('style="', dealDelay(i) != null ? `style="--dd:${dealDelay(i)}ms;` : 'style="')).join('')}</div>`;
   tickCountdown();
 }
-// 開局亮牌：每局只播一次，從最右邊那張開始往左亮。畫面重畫時用負的延遲接著播，不會從頭重來
+// 開局亮牌：每局只播一次，從最左邊那張開始往右亮。畫面重畫時用負的延遲接著播，不會從頭重來
 const DEAL_START = 300, DEAL_STEP = 70, DEAL_FLIP = 20;
 const DEAL_MS = DEAL_START + 16 * DEAL_STEP + DEAL_FLIP + 250;     // 等全部亮完再開始打（多留一點給連線延遲）
 let dealFx = { key: null, t0: 0 }, dealT = 0;
@@ -1038,10 +1038,10 @@ function dealDelays(D) {
     clearTimeout(dealT);
     dealT = setTimeout(() => { if (lastD) draw(lastD); }, DEAL_MS);   // 翻完後重畫一次，拿掉動畫
   }
-  const el = performance.now() - dealFx.t0, n = D.v.hand.length;
+  const el = performance.now() - dealFx.t0;
   return i => {
     if (dealFx.key !== D.commit) return null;
-    const d = DEAL_START + (n - 1 - i) * DEAL_STEP - el;
+    const d = DEAL_START + i * DEAL_STEP - el;
     return d + DEAL_FLIP > 0 ? Math.round(d) : null;
   };
 }
