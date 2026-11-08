@@ -1275,7 +1275,7 @@ function resultData(res) {
 }
 function resultTitle(R, D) {
   if (R.draw) return '流局';
-  return '🀄 ' + (R.selfDraw ? `${esc(dispName(D, R.p))} 自摸！` : `${esc(dispName(D, R.p))} 胡牌！（${esc(dispName(D, R.from))} 放槍）`);
+  return '<img class="logo" src="icon-192.png" alt="">' + (R.selfDraw ? `${esc(dispName(D, R.p))} 自摸！` : `${esc(dispName(D, R.p))} 胡牌！（${esc(dispName(D, R.from))} 放槍）`);
 }
 function resultHTML(R, D) {
   let html;
