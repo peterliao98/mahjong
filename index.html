@@ -32,6 +32,8 @@ body{margin:0;min-height:100vh;min-height:100dvh;color:var(--text);background:ra
 button,select{font:inherit}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 14px;background:rgba(0,0,0,.25)}
 .brand{font-weight:800;font-size:18px;letter-spacing:1px}
+/* 標題旁的 App 圖示（跟手機桌面圖示同一張），大小跟著文字縮放 */
+.logo{width:1.45em;height:1.45em;border-radius:22%;vertical-align:-.38em;margin-right:.3em}
 .meta{color:var(--muted);font-size:14px;flex:1;min-width:160px}
 .ctrls{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px}
 .ctrls label{display:flex;gap:4px;align-items:center;cursor:pointer}
@@ -344,7 +346,7 @@ button,select{font:inherit}
 </head>
 <body>
 <header class="bar">
-  <div class="brand">🀄 台灣十六張麻將 <small class="ver" id="verBar"></small></div>
+  <div class="brand"><img class="logo" src="icon-192.png" alt="">台灣十六張麻將 <small class="ver" id="verBar"></small></div>
   <div class="meta" id="meta"></div>
   <div class="ctrls">
     <label><input type="checkbox" id="optHint" checked> 聽牌提示</label>
@@ -2087,7 +2089,7 @@ function setMode() {
 function showLobby(msg) {
   const saved = loadRoom();
   const rejoin = saved && saved.role === 'client' && !NET.role;
-  modal(`<h2>🀄 台灣十六張麻將</h2>
+  modal(`<h2><img class="logo" src="icon-192.png" alt="">台灣十六張麻將</h2>
     ${msg ? `<p class="bad">${esc(msg)}</p>` : ''}
     <div class="lobby">
       <div class="acct" id="lbAcct"></div>
