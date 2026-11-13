@@ -251,20 +251,22 @@ body{background:radial-gradient(ellipse at 50% 45%,#2f8060 0%,#1d5a3f 42%,#0e302
 .who .head{display:grid;grid-template-columns:auto auto;gap:4px 6px;align-items:center;font-size:16px;min-width:0}
 .who .head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:7.5em}
 .who .wind{height:28px}
-.who .dealer{grid-column:1 / -1;justify-self:start;font-size:14px}
+.who .dealer{grid-column:1 / -1;justify-self:start;font-size:14px;white-space:nowrap}
 .who .score{grid-column:1 / -1;justify-self:start;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.45);border-radius:999px;
   padding:2px 12px 2px 3px;font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .who .score::before{content:"";width:18px;height:18px;border-radius:50%;flex:none;
   background:radial-gradient(circle at 35% 35%,#fff0b0,#e2ab25 60%,#a8740f);box-shadow:inset 0 0 0 2px #c58f1a}
 
-/* 對家：頭像與分數在最左邊，接著是吃碰槓、手牌（牌背），從左邊固定的位置排起，摸牌打牌只有右端變長變短；
-   花牌放在這排下方、靠右、但避開摸牌那張（固定位置，不佔這一排的位置，所以不會推動別的牌） */
+/* 對家：頭像與分數在最左邊；牌那一排從右邊固定的位置往左排：吃碰槓在最右邊、接著手牌，摸進來的牌在最左邊（空一點）。
+   摸牌打牌只有左端變長變短，吃碰時手牌少 3 張、吃碰多 3 張，其他牌不會移動。
+   花牌放在這排下方靠右（固定位置，不佔這一排的位置，所以不會推動別的牌） */
 .s2{left:calc(var(--cx) - 440px);top:0;width:880px;height:64px;display:flex;justify-content:flex-start;align-items:flex-end;gap:12px}
-.s2 .who{width:220px;flex:none;align-self:center}
+.s2 .who{width:250px;flex:none;align-self:center}
 /* 對家與自己：資訊排兩行（風位、名字、莊｜分數），比較矮 */
 .s2 .head,.me .head{grid-template-columns:auto auto auto;justify-content:start}.s2 .head .dealer,.me .head .dealer{grid-column:auto}.s2 .head .score,.me .head .score{grid-column:1 / -1}
-.s2 .ot{position:relative;display:flex;align-items:flex-end;gap:10px;height:100%}
-.s2 .fl{position:absolute;left:0;top:calc(100% + 5px);width:calc(var(--ow) * 16 + 26px);justify-content:flex-end}
+.s2 .ot{position:relative;display:flex;justify-content:flex-end;align-items:flex-end;gap:10px;height:100%;width:calc(var(--ow) * 17.45 + 27px)}
+.s2 .fl{position:absolute;right:0;top:calc(100% + 5px)}
+.s2 .hrow .tile.drawn{margin-right:calc(var(--ow) * .45)}
 .s2 .row{flex-wrap:nowrap;gap:1px}
 .s2 .tile{--tw:var(--ow)}
 .s2 .fl .tile{--tw:20px}
@@ -972,10 +974,12 @@ function renderOpp(D, q) {
   const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q], fls = D.v.flowers[q];
   const mts = m => m.type === 'ankong' ? (D.reveal ? [null, m.tiles[0], m.tiles[0], null] : [null, null, null, null]) : m.tiles;
   let ot;
-  if (k === 2) {   // 對家：吃碰槓｜手牌（牌背），花牌在這排下方靠右
-    const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t)).join('') : Array.from({ length: n }, () => tileHTML(null)).join('');
+  if (k === 2) {   // 對家：摸進來的牌｜手牌（牌背）｜吃碰槓，花牌在這排下方靠右
+    // 手牌比平常多一張（3n+2 張）時，最左邊那張就是剛摸進來的，跟其他牌空開一點
+    const drawn = !D.reveal && n === 17 - 3 * melds.length;
+    const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t)).join('') : Array.from({ length: n }, (_, i) => tileHTML(null, i === 0 && drawn ? 'drawn' : '')).join('');
     ot = `<div class="row fl">${fls.map(f => tileHTML(f)).join('')}</div>` +
-      `<div class="row md">${melds.map(m => meldHTML(m, !!D.reveal, '')).join('')}</div><div class="row hrow">${hand}</div>`;
+      `<div class="row hrow">${hand}</div><div class="row md">${melds.map(m => meldHTML(m, !!D.reveal, '')).join('')}</div>`;
   } else {         // 左右兩家：側面看過去的手牌（攤牌時改成橫躺的牌面）｜橫躺的吃碰槓與花牌
     const hand = D.reveal ? D.reveal[q].hand.map(t => rtHTML(t, k, 'rv')).join('') : '<i class="slab"></i>'.repeat(n);
     ot = `<div class="hcol">${hand}</div><div class="mcol">` +
