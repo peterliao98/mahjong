@@ -41,32 +41,6 @@ button,select{font:inherit}
 @media (hover:hover){.ctrls button:hover,.btn:hover{filter:brightness(1.07)}}
 .ctrls .upd{background:var(--gold);color:#222}
 
-#table{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"s2 s2 s2" "s3 c s1" "me me me";
-  gap:8px;padding:8px;max-width:1180px;margin:0 auto}
-.seat{background:rgba(0,0,0,.14);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:5px;border:2px solid transparent;min-width:0}
-.seat.active,.me.active{border-color:var(--gold);box-shadow:0 0 14px rgba(242,193,78,.35)}
-.s2{grid-area:s2;align-items:center}
-/* 對家：每一排先留好最多張數的寬度、牌從左邊排起，摸牌打牌時其他牌不會移動 */
-.s2 > *{width:min(100%, calc((var(--xw) + 3px) * 21))}
-.s2 .row{justify-content:flex-start}
-.s1{grid-area:s1;width:calc(var(--xw)*4 + 25px)}
-.s3{grid-area:s3;width:calc(var(--xw)*4 + 25px)}
-/* 左右兩家：一排 4 張。手牌那排先留好「最多可能有幾張」的高度（沒吃碰時 5 排＝17 張，每吃碰一次少 3 張）
-   名字與分數固定在上方不會被擠扁，下面的牌放不下時只有牌那一區捲動 */
-.s1 .row.hrow,.s3 .row.hrow{min-height:calc((var(--xw)*1.36 + 3px)*var(--hn,5) - 3px);align-content:flex-start}
-.s1,.s3{overflow:hidden}
-.s1 > .head,.s3 > .head{flex:none}
-.sbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:inherit;overflow-y:auto;overflow-x:hidden}
-.sbody > *{flex:none}
-.s1 .head,.s3 .head{line-height:1.4}
-/* 左右兩家的名字區（欄位很窄）：第一行風位＋名字（太長就截斷）；是莊家時多一行「莊」；最後一行分數。
-   莊家只在換局時改變，所以下面的牌不會在打牌中移動 */
-.s1 .head,.s3 .head{display:grid;grid-template-columns:auto minmax(0,1fr);height:auto;overflow:visible;gap:2px 4px;align-items:center}
-.s1 .head b,.s3 .head b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.s1 .head .dealer,.s3 .head .dealer{grid-column:1 / -1;justify-self:start;white-space:nowrap}
-.s1 .head .score,.s3 .head .score{grid-column:1 / -1;white-space:nowrap}
-.head{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:13px}
-.head b{font-size:14px}
 /* 風位：骰子圖（東南西北），字只留給螢幕報讀 */
 .wind{display:inline-block;flex:none;height:26px;aspect-ratio:121/112;background:center/contain no-repeat;font-size:0;color:transparent;vertical-align:middle}
 .wind.wn{background-image:url(data:image/webp;base64,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)}
@@ -78,16 +52,6 @@ button,select{font:inherit}
 .row{display:flex;flex-wrap:wrap;gap:3px;align-items:flex-end}
 .meld{display:flex;gap:1px;margin-right:4px}
 
-#center{grid-area:c;display:grid;grid-template-columns:1fr auto 1fr;grid-template-areas:". r2 ." "r3 mid r1" ". r0 .";
-  gap:6px;align-items:center;justify-items:center;background:rgba(0,0,0,.13);border-radius:14px;padding:8px;min-height:240px}
-.river{display:flex;flex-wrap:wrap;gap:2px;align-content:flex-start;min-height:calc(var(--sw)*1.36)}
-.rv0,.rv2{grid-area:r0;width:calc(var(--sw)*9 + 18px)} .rv2{grid-area:r2}
-.rv1,.rv3{grid-area:r1;width:calc(var(--sw)*4 + 8px)} .rv3{grid-area:r3;justify-content:flex-end}
-.mid{grid-area:mid;text-align:center;font-size:13px;color:var(--muted);padding:6px 4px;line-height:1.55;min-width:120px}
-.mid .big{font-size:20px;color:var(--text);font-weight:800}
-.mid code{font-size:11px;color:#d6e9dc}
-
-.me{grid-area:me;background:rgba(0,0,0,.18);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent;position:relative}
 /* 對手吃碰槓胡的提示：在那位對手的座位上跳出（位置由程式算），2 秒後淡出；不擋點擊 */
 .callfx{position:fixed;left:50%;top:50%;z-index:15;pointer-events:none;display:flex;align-items:center;gap:8px;white-space:nowrap;
   padding:8px 26px;border-radius:16px;font-size:44px;line-height:1.1;font-weight:900;letter-spacing:2px;color:#222;background:#f6efdc;
@@ -108,15 +72,8 @@ button,select{font:inherit}
 .act.pass{background:#7f8c8d;color:#fff}
 .act .tile{--tw:18px}
 /* 自己的區域：放大分數、花牌、吃碰槓的牌與動作按鈕 */
-.mehead{display:flex;align-items:center;gap:16px;min-height:calc(var(--mw)*1.36 + 6px)}
-.me .head{flex:none;flex-direction:column;align-items:flex-start;gap:2px}
-.me .head b{font-size:20px}
-.me .wind{height:36px}
 .me .dealer{font-size:15px;padding:1px 6px}
 .me .score{font-size:26px;letter-spacing:.5px;font-variant-numeric:tabular-nums}
-.mel{flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;align-items:flex-end;padding:2px 0 4px}
-.mel .meld{margin-right:8px}
-.mel .sep{flex:none;width:10px}
 .tile.md{--tw:var(--mw)}
 .me .actions{gap:10px;min-height:56px}
 .me .act{font-size:21px;padding:9px 22px;min-height:52px;border-radius:12px;gap:6px}
@@ -230,114 +187,6 @@ button,select{font:inherit}
   .hand{-webkit-overflow-scrolling:touch}
 }
 
-/* 平板與電腦：整個遊戲剛好一個畫面，每一區固定大小，牌變多也不會推動別的區塊 */
-@media (min-width:700px) and (min-height:600px){
-  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
-  body{display:flex;flex-direction:column}
-  .bar{flex:none}
-  .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #table{flex:1;min-height:0;width:100%;grid-template-rows:auto minmax(0,1fr) auto}
-  /* 對手：每一排先留好位置 */
-  .seat .row{min-height:calc(var(--xw)*1.36)}
-  .s2 .row{flex-wrap:nowrap}
-  .s1,.s3{overflow:hidden}
-  /* 牌河：上下各留三排，左右兩家從上往下排，中間資訊不動 */
-  #center{min-height:0;overflow:hidden;align-items:start;
-    grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
-    grid-template-rows:calc((var(--sw)*1.36 + 2px)*3) minmax(0,1fr) calc((var(--sw)*1.36 + 2px)*3)}
-  /* 牌河大小由程式依中間區域算好（--rw 牌寬、--rvt 上下兩家寬、--rvs 左右兩家寬） */
-  .river .tile.sm{--tw:var(--rw,var(--sw))}
-  .rv0,.rv2{width:var(--rvt,calc(var(--sw)*9 + 18px))}
-  .rv1,.rv3{width:var(--rvs,calc(var(--sw)*4 + 8px))}
-  .mid{align-self:center}
-  /* 自己：每一排固定高度 */
-  .mehead{height:calc(var(--mw)*1.36 + 10px)}
-  .me .actions{height:60px;overflow-x:auto;overflow-y:hidden}
-  .me .acts-main{flex-wrap:nowrap}
-  .hand{height:calc(var(--hw)*1.36 + 20px);min-height:0;overflow-y:hidden}
-}
-
-@media (max-width:640px){
-  #table{gap:5px;padding:5px}
-  .brand{font-size:16px}
-  .act{padding:6px 10px;font-size:14px}
-  .me .act{font-size:16px;padding:6px 12px;min-height:40px}
-  .me .score{font-size:20px}
-  .mid{min-width:0;font-size:11px;padding:4px 0}
-  .mid .big{font-size:16px}
-}
-
-/* ===== 手機橫拿：一個畫面放下全部；按鈕列收進右上角「☰」選單 ===== */
-.menubtn,#rotate{display:none}
-@media (orientation:landscape) and (max-height:500px){
-  :root{
-    --hw: clamp(20px, calc((100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 60px) / 17.5), 12vh);
-    --mw: calc(var(--hw) * .62);
-    --xw: 13px; --sw: 18px;
-  }
-  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
-  body{display:flex;flex-direction:column}
-  #table{flex:1;min-height:0;width:100%;max-width:none;padding:4px;gap:4px;grid-template-rows:auto minmax(0,1fr) auto}
-  .seat{padding:3px 6px;gap:2px;border-radius:8px}
-  .head{font-size:11px;gap:2px 4px}.head b{font-size:12px}
-  .wind{height:20px}.dealer{font-size:10px;padding:0 4px}
-  /* 對家：一行放完 */
-  /* 手機：名字｜花牌｜吃碰槓｜手牌，手牌固定在右邊、寬度留 17 張 */
-  .s2{display:grid;grid-template-columns:8.5em calc((var(--xw) + 3px) * 8) minmax(0,1fr) calc(13px * 17);align-items:center;column-gap:8px;padding-right:52px}
-  .s2 > *{width:auto}
-  .s2 .row{flex-wrap:nowrap;overflow:hidden}
-  .s2 .head{flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
-  .s2 .head b{min-width:0;overflow:hidden;text-overflow:ellipsis}
-  .s2 .hrow .tile{--tw:10px}
-  .s1,.s3{width:calc(var(--xw)*4 + 25px);overflow:hidden}
-  .seat .row{min-height:calc(var(--xw)*1.36)}
-  #center{min-height:0;overflow:hidden;align-items:start;padding:4px;gap:4px;border-radius:10px;
-    grid-template-areas:"r3 r2 r1" "r3 mid r1" "r3 r0 r1";
-    grid-template-rows:calc((var(--sw)*1.36 + 2px)*2) minmax(0,1fr) calc((var(--sw)*1.36 + 2px)*2)}
-  .river .tile.sm{--tw:var(--rw,var(--sw))}
-  .rv0,.rv2{width:var(--rvt,calc(var(--sw)*12 + 24px))}
-  .rv1,.rv3{width:var(--rvs,calc(var(--sw)*4 + 8px))}
-  .mid{align-self:center;min-width:0;font-size:10px;line-height:1.3;padding:0}
-  .mid .big{font-size:14px}
-  /* 自己：上排＝分數、花牌、吃碰槓（左）＋動作按鈕（右）；下排＝手牌 */
-  .me{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"head acts" "hand hand";
-    column-gap:8px;row-gap:0;padding:3px 8px 4px;border-radius:10px}
-  .mehead{grid-area:head;height:max(42px, calc(var(--mw)*1.36 + 6px));min-height:0;gap:10px}
-  .me .head{flex-direction:row;align-items:center;gap:6px}
-  .me .head b{font-size:14px}.me .wind{height:26px}.me .dealer{font-size:12px}
-  .me .score{font-size:18px}
-  .me .actions{grid-area:acts;height:max(42px, calc(var(--mw)*1.36 + 6px));min-height:0;gap:6px;overflow-x:auto;overflow-y:hidden;max-width:62vw}
-  /* 有按鈕時：左欄（分數與吃碰槓）和右欄（聽牌資訊）等寬，按鈕在畫面正中間 */
-  .me.hasacts{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-areas:"head acts tg" "hand hand hand"}
-  .me.hasacts .actions{display:contents}
-  .me.hasacts .acts-main{grid-area:acts;height:max(42px, calc(var(--mw)*1.36 + 6px));flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-width:62vw;gap:6px}
-  .me.hasacts .ting{grid-area:tg;justify-self:end;overflow:hidden}
-  .me .act{font-size:16px;padding:5px 12px;min-height:38px;border-radius:10px}
-  .me .act .tile{--tw:20px}
-  .actions .msg{font-size:14px}.actions .msg .tile{--tw:24px}
-  .me .cd{font-size:15px}
-  .ting{font-size:12px;gap:3px}.ting .tile{--tw:18px}
-  .callfx{font-size:28px;padding:4px 14px;border-radius:12px;gap:6px}.callfx .tile{--tw:26px}
-  .hand{grid-area:hand;height:calc(var(--hw)*1.36 + 12px);min-height:0;padding-top:10px;overflow-y:hidden}
-  .hand .tile.sel{transform:translateY(-8px)!important}
-  .hand .tile.tp::after{top:-6px}
-  /* 右上角選單 */
-  .bar{display:none}
-  .menubtn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:15;
-    top:calc(env(safe-area-inset-top, 0px) + 6px);right:calc(env(safe-area-inset-right, 0px) + 8px);
-    width:40px;height:34px;border:0;border-radius:9px;background:rgba(246,239,220,.92);color:#222;font-size:20px;font-weight:800;cursor:pointer}
-  .menubtn.dot::after{content:"";position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:#e74c3c}
-  body.menu-open .bar{display:flex;flex-direction:column;align-items:stretch;gap:10px;position:fixed;z-index:16;
-    top:calc(env(safe-area-inset-top, 0px) + 46px);right:calc(env(safe-area-inset-right, 0px) + 8px);
-    width:min(300px, 80vw);max-height:calc(100% - 56px);overflow:auto;padding:12px;border-radius:12px;background:#123d29;box-shadow:0 8px 30px rgba(0,0,0,.5)}
-  body.menu-open .brand{font-size:15px}
-  body.menu-open .meta{white-space:normal;font-size:13px;min-width:0}
-  body.menu-open .ctrls{flex-direction:column;align-items:stretch;gap:8px}
-  body.menu-open .ctrls label{min-height:36px}
-  .modal{padding:8px}
-  .card{max-height:calc(100% - 8px);padding:12px 16px}
-  .card .rhead{top:-12px;margin:-12px -16px 6px;padding:10px 16px 8px}
-}
 /* 手機直拿：請轉成橫向 */
 @media (orientation:portrait) and (max-width:600px){
   #rotate{display:flex;position:fixed;inset:0;z-index:40;flex-direction:column;align-items:center;justify-content:center;gap:14px;
@@ -347,6 +196,145 @@ button,select{font:inherit}
 }
 @keyframes turn{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
 @media (prefers-reduced-motion:reduce){#rotate .ph{animation:none;transform:rotate(-90deg)}}
+/* ===== 牌桌：仿實體牌桌。整張桌子用固定的設計尺寸（寬 --W × 高 720）排好，再等比例縮放塞進畫面（見 fitStage）
+   中間是方位盤，四家的牌河繞著它排成風車形；對家在上、上家在左、下家在右，各自有頭像、分數與牌 ===== */
+#rotate{display:none}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{background:radial-gradient(ellipse at 50% 45%,#2f8060 0%,#1d5a3f 42%,#0e3022 100%)}
+.bar{display:none}
+#table{position:fixed;width:var(--W,1280px);height:720px;
+  left:calc(50% + (env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)) / 2);
+  top:calc(50% + (env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)) / 2);
+  transform:translate(-50%,-50%) scale(var(--s,1));
+  --cx:calc(var(--W,1280px) / 2);--cy:310px;      /* 方位盤中心 */
+  --K:148px;--Kp:calc(var(--K) + 12px);           /* 方位盤大小（Kp 含與牌河的間隔） */
+  --D:166px;--L:calc(var(--Kp) + var(--D));       /* 牌河：深 4 排、長 11 張 */
+  --rw:28px;--ow:26px;--mw:34px;
+  --hw:min(72px, calc((var(--W,1280px) - 64px) / 17.5))}
+#table.many{--rw:24px}
+#tmeta{position:absolute;left:16px;top:12px;font-size:15px;line-height:1.5;color:var(--muted)}
+#tmeta b{color:var(--text);font-size:17px}
+
+/* 牌河與方位盤 */
+#center{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
+#center::before{content:"";position:absolute;left:calc(var(--cx) - 340px);top:calc(var(--cy) - 340px);width:680px;height:680px;border-radius:50%;
+  background:radial-gradient(circle,rgba(160,255,210,.10),rgba(160,255,210,.04) 45%,rgba(160,255,210,0) 70%)}
+.river{position:absolute;width:var(--L);height:var(--D);display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px 1px}
+#table.many .river{gap:1px}
+.river .tile.sm{--tw:var(--rw);box-shadow:0 3px 0 #cdbf98,0 4px 5px rgba(0,0,0,.45)}
+.rv0{left:calc(var(--cx) - var(--Kp) / 2 - var(--D));top:calc(var(--cy) + var(--Kp) / 2)}
+.rv1{left:var(--cx);top:var(--cy);transform:rotate(-90deg)}
+.rv2{left:calc(var(--cx) - var(--Kp) / 2);top:calc(var(--cy) - var(--Kp) / 2 - var(--D));transform:rotate(180deg)}
+.rv3{left:calc(var(--cx) - var(--Kp) - var(--D));top:calc(var(--cy) - var(--D));transform:rotate(90deg)}
+#mid{position:absolute;left:calc(var(--cx) - var(--K) / 2);top:calc(var(--cy) - var(--K) / 2);width:var(--K);height:var(--K);
+  border-radius:20px;background:linear-gradient(145deg,#1d4c40,#0c2a22);border:3px solid #48a07f;
+  box-shadow:0 8px 20px rgba(0,0,0,.5),inset 0 0 20px rgba(0,0,0,.55)}
+.cwd{position:absolute;line-height:0}
+.cwd .wind{height:32px;opacity:.55;transition:opacity .2s}
+.cwd.on .wind{opacity:1;filter:drop-shadow(0 0 5px #ffd54a) drop-shadow(0 0 2px #ffd54a)}
+.cwd0{left:50%;bottom:5px;transform:translateX(-50%)}
+.cwd2{left:50%;top:5px;transform:translateX(-50%)}
+.cwd1{right:5px;top:50%;transform:translateY(-50%)}
+.cwd3{left:5px;top:50%;transform:translateY(-50%)}
+.cc{position:absolute;inset:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1}
+.cc small{font-size:12px;color:var(--muted);white-space:nowrap}
+.cc b{font-size:28px;color:#fff;font-variant-numeric:tabular-nums}
+
+/* 頭像與分數（頭像之後換成生肖圖；現在先用名字的第一個字） */
+.seat,.me{position:absolute}
+.who{display:flex;align-items:center;gap:10px}
+.face{width:64px;height:64px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:28px;font-weight:900;color:#6a4511;
+  background:radial-gradient(circle at 35% 30%,#fff7de,#eccb7e 65%,#b98a35);border:3px solid rgba(255,255,255,.85);
+  box-shadow:0 4px 10px rgba(0,0,0,.45);transition:box-shadow .2s,border-color .2s}
+.active .face{border-color:var(--gold);box-shadow:0 0 0 4px rgba(242,193,78,.5),0 0 24px rgba(242,193,78,.85)}
+.who .head{display:grid;grid-template-columns:auto auto;gap:4px 6px;align-items:center;font-size:16px;min-width:0}
+.who .head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:7.5em}
+.who .wind{height:28px}
+.who .dealer{grid-column:1 / -1;justify-self:start;font-size:14px}
+.who .score{grid-column:1 / -1;justify-self:start;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.45);border-radius:999px;
+  padding:2px 12px 2px 3px;font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.who .score::before{content:"";width:18px;height:18px;border-radius:50%;flex:none;
+  background:radial-gradient(circle at 35% 35%,#fff0b0,#e2ab25 60%,#a8740f);box-shadow:inset 0 0 0 2px #c58f1a}
+
+/* 對家：花牌｜手牌（牌背）｜吃碰槓 排一行靠右，頭像在右邊 */
+.s2{left:calc(var(--cx) - 400px);top:4px;width:700px;height:60px;display:flex;justify-content:flex-end;align-items:flex-end}
+.s2 .who{position:absolute;left:712px;top:2px}
+.s2 .ot{display:flex;align-items:flex-end;gap:10px}
+.s2 .row{flex-wrap:nowrap;gap:1px}
+.s2 .tile{--tw:var(--ow)}
+.s2 .fl .tile{--tw:20px}
+.s2 .md{gap:6px}.s2 .meld{margin:0;gap:0}
+.s2 .hrow .tile.back{box-shadow:0 -5px 0 #efe7cf,0 4px 6px rgba(0,0,0,.45)}
+
+/* 上家（左）、下家（右）：頭像在上；下面是側面看過去的手牌，旁邊是橫躺的吃碰槓與花牌 */
+.s1,.s3{top:74px;width:210px;height:392px}
+.s3{left:14px}.s1{right:14px}
+.s1 .who{flex-direction:row-reverse}
+.s1 .head{justify-items:end}.s1 .head .dealer,.s1 .head .score{justify-self:end}
+.s1 .head .wind{grid-column:2;grid-row:1}.s1 .head b{grid-column:1;grid-row:1}
+.ot{display:flex}
+.s1 .ot,.s3 .ot{gap:8px;margin-top:8px;height:312px}
+.s3 .ot{padding-left:12px}
+.s1 .ot{flex-direction:row-reverse;padding-right:12px}
+.hcol{display:flex;flex-direction:column;gap:1px;flex:none}
+.s1 .hcol{flex-direction:column-reverse;justify-content:flex-end}
+.slab{display:block;width:40px;height:17px;border-radius:4px;flex:none;
+  background:linear-gradient(90deg,#f6f0de 0 56%,#d9cfb4 56% 60%,var(--backc,#4c865e) 60%);
+  box-shadow:0 2px 3px rgba(0,0,0,.45),inset 0 -2px 0 rgba(0,0,0,.12)}
+.s1 .slab{background:linear-gradient(90deg,var(--backc,#4c865e) 0 40%,#d9cfb4 40% 44%,#f6f0de 44%)}
+.mcol{display:flex;flex-direction:column;flex-wrap:wrap;align-content:flex-start;gap:6px;height:100%}
+.s1 .mcol{flex-wrap:wrap-reverse;flex-direction:column-reverse;justify-content:flex-end}
+.smeld{display:flex;flex-direction:column}
+.s1 .smeld{flex-direction:column-reverse}
+.rt{position:relative;flex:none;width:calc(var(--ow) * 1.36);height:var(--ow)}
+.rt > .tile{--tw:var(--ow);position:absolute;left:50%;top:50%;margin:calc(var(--ow) * -.68) 0 0 calc(var(--ow) * -.5);transform:rotate(90deg)}
+.rt.rm > .tile{transform:rotate(-90deg)}
+.rt.rv{--ow:18px}
+.sfl .rt{--ow:20px}
+
+/* 自己：頭像在左下；手牌上面一排是花牌與吃碰槓（左）、聽牌提示與動作按鈕（右）；最下面是手牌 */
+.me{left:0;top:0;width:100%;height:100%;pointer-events:none}
+.me > *{pointer-events:auto}
+.me .who{position:absolute;left:14px;top:478px}
+.mrow{position:absolute;left:14px;right:14px;top:558px;height:52px;display:flex;align-items:flex-end;gap:14px}
+.mel{flex:0 1 auto;min-width:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;align-items:flex-end;padding:0 0 4px;gap:2px}
+.mel .tile{box-shadow:0 3px 0 #cdbf98,0 4px 5px rgba(0,0,0,.4)}
+.hand .meld{margin:0 calc(var(--hw) * .35) 0 0;gap:0}
+.hand .tile.hm{cursor:default!important;transform:none!important}
+.me .actions{flex:1;min-width:0;display:flex;justify-content:flex-end;align-items:center;gap:12px;height:52px;min-height:0;overflow-x:auto;overflow-y:hidden}
+.me .acts-main{display:flex;flex-wrap:nowrap;align-items:center;gap:10px}
+.me .act{min-height:48px;padding-top:6px;padding-bottom:6px;box-shadow:0 4px 0 rgba(0,0,0,.3),0 6px 12px rgba(0,0,0,.35)}
+.ting{white-space:nowrap;font-size:17px}
+.hand{position:absolute;left:14px;right:14px;bottom:8px;height:calc(var(--hw) * 1.36 + 18px);min-height:0;padding-top:16px;overflow:visible}
+.hand .tile{box-shadow:0 5px 0 #cdbf98,0 7px 8px rgba(0,0,0,.45)}
+
+/* 手機等小螢幕（整張桌子縮得比較小）：字放大一點 */
+.tiny #tmeta{font-size:17px;line-height:1.4}.tiny #tmeta b{font-size:19px}
+.tiny .face{width:76px;height:76px;font-size:34px}
+.tiny .who .head{font-size:20px}.tiny .who .head b{font-size:24px}.tiny .who .score{font-size:22px}.tiny .who .wind{height:34px}
+.tiny .who .dealer{font-size:18px}
+.tiny .me .act{font-size:24px}
+.tiny .ting{font-size:21px}
+.tiny .cc small{font-size:14px}.tiny .cc b{font-size:34px}
+
+/* 選單：右上角「☰」，按鈕列收在裡面 */
+.menubtn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:15;
+  top:calc(env(safe-area-inset-top, 0px) + 8px);right:calc(env(safe-area-inset-right, 0px) + 10px);
+  width:44px;height:38px;border:0;border-radius:10px;background:rgba(246,239,220,.92);color:#222;font-size:22px;font-weight:800;cursor:pointer;
+  box-shadow:0 3px 8px rgba(0,0,0,.4)}
+.menubtn.dot::after{content:"";position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:#e74c3c}
+body.menu-open .bar{display:flex;flex-direction:column;align-items:stretch;gap:10px;position:fixed;z-index:16;
+  top:calc(env(safe-area-inset-top, 0px) + 52px);right:calc(env(safe-area-inset-right, 0px) + 10px);
+  width:min(300px, 80vw);max-height:calc(100% - 62px);overflow:auto;padding:12px;border-radius:12px;background:#123d29;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+body.menu-open .brand{font-size:15px}
+body.menu-open .meta{white-space:normal;font-size:13px;min-width:0}
+body.menu-open .ctrls{flex-direction:column;align-items:stretch;gap:8px}
+body.menu-open .ctrls label{min-height:36px}
+@media (max-height:500px){
+  .modal{padding:8px}
+  .card{max-height:calc(100% - 8px);padding:12px 16px}
+  .card .rhead{top:-12px;margin:-12px -16px 6px;padding:10px 16px 8px}
+}
 </style>
 </head>
 <body>
@@ -368,6 +356,7 @@ button,select{font:inherit}
 <div id="rotate" role="alert"><div class="ph"></div>請把手機轉成橫向<small>麻將要橫著拿才排得下整副手牌</small></div>
 
 <main id="table">
+  <div id="tmeta"></div>
   <section class="seat s2" id="seat2"></section>
   <section class="seat s3" id="seat3"></section>
   <section id="center">
@@ -963,78 +952,63 @@ function seatHead(D, q) {
     (q === D.dealer ? `<span class="dealer">莊${D.streak ? '·連' + (+D.streak) : ''}</span>` : '') +
     `<span class="score">${(+D.scores[q]).toLocaleString()}</span></div>`;
 }
+// 頭像（之後換成生肖圖；現在先用名字的第一個字）＋風位、名字、莊家、分數
+function whoHTML(D, q) {
+  const nm = dispName(D, q).replace(/^電腦·/, '');
+  return `<div class="who"><div class="face" aria-hidden="true">${esc([...nm][0] || '')}</div>${seatHead(D, q)}</div>`;
+}
+// 橫躺的牌（上家往右轉、下家往左轉，牌頭朝向桌子中間）
+const rtHTML = (t, k, cls = '') => `<div class="rt ${k === 1 ? 'rm' : 'rp'} ${cls}">${tileHTML(t)}</div>`;
 function renderOpp(D, q) {
   const k = (q - D.me + 4) % 4, el = $('seat' + k);
   el.className = 'seat s' + k + (D.cur === q && !D.reveal ? ' active' : '');
   const n = Math.min(20, +D.v.handCounts[q] || 0);
-  const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t, 'xs')).join('') : Array.from({ length: n }, () => tileHTML(null, 'xs')).join('');
-  const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q];
-  const fl = `<div class="row">${D.v.flowers[q].map(f => tileHTML(f, 'xs')).join('')}</div>`;
-  const md = `<div class="row">${melds.map(m => meldHTML(m, !!D.reveal, 'xs')).join('')}</div>`;
-  // 左右兩家手牌那排：依吃碰數預留高度（一排 4 張）
-  const hn = Math.max(1, Math.ceil((17 - 3 * melds.length) / 4));
-  const hd = `<div class="row hrow" style="--hn:${hn}">${hand}</div>`;
-  // 對家：花牌、吃碰槓、手牌各一排；左右兩家：名字固定在上，下面手牌→花牌→吃碰槓（放不下時這一區捲動）
-  el.innerHTML = seatHead(D, q) + (k === 2 ? fl + md + hd : `<div class="sbody">${hd + fl + md}</div>`);
-}
-/* 牌河放到最大：在中間區域裡試各種「每排幾張、共幾排」，挑牌最大的排法。
-   每家先預留 24 張的位置（一般一局用不完），真的超過時才重新排、牌稍微變小 */
-const FIXED_MQ = matchMedia('(min-width:700px) and (min-height:600px), (orientation:landscape) and (max-height:500px)');
-let rvKey = '', rvMax = 0;
-function layoutRivers(maxN) {
-  const C = $('center');
-  rvMax = maxN;
-  if (!FIXED_MQ.matches) {
-    if (rvKey) { ['--rw', '--rvt', '--rvs'].forEach(k => C.style.removeProperty(k)); C.style.gridTemplateColumns = C.style.gridTemplateRows = C.style.justifyContent = ''; rvKey = ''; }
-    return;
+  const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q], fls = D.v.flowers[q];
+  const mts = m => m.type === 'ankong' ? (D.reveal ? [null, m.tiles[0], m.tiles[0], null] : [null, null, null, null]) : m.tiles;
+  let ot;
+  if (k === 2) {   // 對家：花牌｜手牌（牌背）｜吃碰槓
+    const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t)).join('') : Array.from({ length: n }, () => tileHTML(null)).join('');
+    ot = `<div class="row fl">${fls.map(f => tileHTML(f)).join('')}</div><div class="row hrow">${hand}</div>` +
+      `<div class="row md">${melds.map(m => meldHTML(m, !!D.reveal, '')).join('')}</div>`;
+  } else {         // 左右兩家：側面看過去的手牌（攤牌時改成橫躺的牌面）｜橫躺的吃碰槓與花牌
+    const hand = D.reveal ? D.reveal[q].hand.map(t => rtHTML(t, k, 'rv')).join('') : '<i class="slab"></i>'.repeat(n);
+    ot = `<div class="hcol">${hand}</div><div class="mcol">` +
+      melds.map(m => `<div class="smeld">${mts(m).map(t => rtHTML(t, k)).join('')}</div>`).join('') +
+      (fls.length ? `<div class="smeld sfl">${fls.map(f => rtHTML(f, k)).join('')}</div>` : '') + '</div>';
   }
-  const cs0 = getComputedStyle(C), mid = $('mid');
-  const PAD = parseFloat(cs0.paddingTop) + parseFloat(cs0.paddingBottom), CG = parseFloat(cs0.rowGap) || 6;
-  const MID_H = Math.max(36, mid.scrollHeight + 4), MID_W = Math.max(80, Math.min(140, mid.scrollWidth));
-  const cap = Math.max(24, maxN || 0), W = C.clientWidth, H = C.clientHeight;
-  const key = `${W}x${H}:${cap}:${MID_H}`;
-  if (!W || !H || key === rvKey) return;
-  rvKey = key;
-  const GX = 2, R = 1.36, MAX = 72;
-  const Wp = W - PAD - 2 * CG, Hp = H - PAD - 2 * CG;
-  let best = null;
-  for (let ct = 4; ct <= 24; ct++) {
-    const rt = Math.ceil(cap / ct);
-    for (let cs = 1; cs <= 12; cs++) {
-      const rs = Math.ceil(cap / cs);
-      const s = Math.floor(Math.min(
-        (Wp - (2 * cs + ct - 3) * GX - 2) / (2 * cs + ct),       // 寬：左＋中＋右
-        (Hp - MID_H - 2 * (rt - 1) * GX - 2) / (2 * rt * R),      // 高：上＋中間資訊＋下
-        (H - PAD - (rs - 1) * GX - 1) / (rs * R),                 // 左右兩家的高
-        MAX));
-      if (ct * s + (ct - 1) * GX < MID_W) continue;
-      if (!best || s > best.s) best = { s, ct, rt, cs };
-    }
-  }
-  if (!best) return;
-  const { s, ct, rt, cs } = best;
-  const w = n => n * s + (n - 1) * GX + 1, h = n => Math.ceil(n * s * R + (n - 1) * GX) + 1;
-  C.style.setProperty('--rw', s + 'px');
-  C.style.setProperty('--rvt', w(ct) + 'px');
-  C.style.setProperty('--rvs', w(cs) + 'px');
-  C.style.gridTemplateColumns = `${w(cs)}px ${w(ct)}px ${w(cs)}px`;
-  C.style.gridTemplateRows = `${h(rt)}px minmax(0,1fr) ${h(rt)}px`;
-  C.style.justifyContent = 'space-evenly';
+  el.innerHTML = whoHTML(D, q) + `<div class="ot">${ot}</div>`;
 }
-// 中間區域大小一變（轉向、視窗縮放）就重新排
-if (window.ResizeObserver) new ResizeObserver(() => layoutRivers(rvMax)).observe($('center'));
-addEventListener('resize', () => requestAnimationFrame(() => layoutRivers(rvMax)));
+/* 整張牌桌用固定的設計尺寸排好（高 720，寬依畫面比例在 1180～1600 之間），再等比例縮放塞進畫面 */
+function fitStage() {
+  const cs = getComputedStyle(document.body);
+  const aw = innerWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const ah = innerHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  if (!(aw > 0 && ah > 0)) return;
+  const W = Math.round(Math.min(1600, Math.max(1180, 720 * aw / ah)));
+  const sc = Math.min(aw / W, ah / 720), r = document.documentElement;
+  r.style.setProperty('--W', W + 'px'); r.style.setProperty('--s', sc.toFixed(4));
+  r.classList.toggle('tiny', sc < .72);
+  if (lastD) drawCallFx(lastD);
+}
+queueMicrotask(fitStage);   // 等整段程式跑完（lastD 已宣告）再算
+addEventListener('resize', fitStage);
+if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
 function renderRivers(D) {
-  layoutRivers(Math.max(...D.v.discards.map(d => d.length)));
+  // 牌河每家留 4 排 × 11 張；有人超過 44 張時全部縮小一點
+  $('table').classList.toggle('many', Math.max(...D.v.discards.map(d => d.length)) > 44);
   for (let q = 0; q < 4; q++) {
     $('river' + ((q - D.me + 4) % 4)).innerHTML = D.v.discards[q].map((d, i) => {
       const last = D.last && D.last.p === q && D.last.i === i;
       return tileHTML(d.tile, 'sm' + (d.called ? ' taken' : '') + (last ? ' last' : ''));
     }).join('');
   }
-  $('mid').innerHTML = `<div>${WINDS[D.roundWind]}風圈 · 第 ${+D.round + 1} 局</div>` +
-    `<div class="big">剩 ${Math.max(0, +D.v.wallLeft)} 張</div>` +
-    (D.cur >= 0 ? `<div>輪到：${esc(dispName(D, D.cur))}</div>` : '');
+  // 方位盤：四邊是各家的風位骰子（輪到的那家發亮），中間是剩餘張數
+  $('mid').innerHTML = [0, 1, 2, 3].map(k => {
+    const q = (D.me + k) % 4, w = (q - D.dealer + 4) % 4;
+    return `<span class="cwd cwd${k}${D.cur === q && !D.reveal ? ' on' : ''}"><span class="wind w${'eswn'[w]}" role="img" aria-label="${dispName(D, q)}：${WINDS[w]}">${WINDS[w]}</span></span>`;
+  }).join('') + `<div class="cc"><small>剩餘張數</small><b>${Math.max(0, +D.v.wallLeft)}</b></div>`;
+  $('tmeta').innerHTML = `<b>${WINDS[D.roundWind]}風圈 · 第 ${+D.round + 1} 局</b><br>底 ${(+D.base || BASE).toLocaleString()} / 每台 ${(+D.perTai || PER_TAI).toLocaleString()}` +
+    (D.room ? ` · 房號 ${esc(D.room)}` : '');
 }
 function humanDisplay(D) {
   const disp = D.v.hand.slice(); let drawnIdx = -1;
@@ -1099,12 +1073,15 @@ function renderMe(D) {
     }
   }
 
-  // 第一排：風位、名字、分數＋花牌與吃碰槓的牌；第二排：動作按鈕（右邊放聽牌資訊）；第三排：手牌
-  el.innerHTML = `<div class="mehead">${seatHead(D, me)}` +
-    `<div class="row mel">${P.flowers.map(f => tileHTML(f, 'md')).join('')}${P.flowers.length && P.melds.length ? '<span class="sep"></span>' : ''}${P.melds.map(m => meldHTML(m, true, 'md')).join('')}</div></div>` +
-    `<div class="actions"><div class="acts-main">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}</div>` +
-    `${hint ? `<span class="ting">${hint}</span>` : ''}</div>` +
-    `<div class="hand ${canDiscard ? 'can' : ''}">${disp.map((t, i) =>
+  // 頭像在左下；手牌上面一排：花牌（左）、聽牌提示與動作按鈕（右）；最下面是手牌，吃碰槓的牌放在手牌左邊、跟手牌一樣大，
+  // 吃碰後整排長度不變。牌的大小依「這排最多會有多長」來算（手牌最多 17-3×吃碰數 張＋摸牌間隔＋每組吃碰的間隔，槓多一張），
+  // 只在吃碰槓時改變，摸牌打牌時不會忽大忽小
+  const slots = 17.45 + P.melds.reduce((n, m) => n + m.tiles.length - 3 + .35, 0);
+  const hwFit = slots > 17.5 ? ` style="--hw:min(72px, calc((var(--W,1280px) - 64px) / ${slots.toFixed(2)}))"` : '';
+  el.innerHTML = whoHTML(D, me) +
+    `<div class="mrow"><div class="row mel">${P.flowers.map(f => tileHTML(f, 'md')).join('')}</div>` +
+    `<div class="actions">${hint ? `<span class="ting">${hint}</span>` : ''}<div class="acts-main">${msg ? `<span class="msg">${msg}</span>` : ''}${curActions.map((a, i) => `<button class="act ${a.cls}" data-a="${i}">${a.label}</button>`).join('')}${cd}</div></div></div>` +
+    `<div class="hand ${canDiscard ? 'can' : ''}"${hwFit}>${P.melds.map(m => meldHTML(m, true, 'hm')).join('')}${disp.map((t, i) =>
       (coverDraw && i === drawnIdx ? tileHTML(null, 'gap covered') :
       tileHTML(t, (i === selIdx ? 'sel ' : '') + (i === drawnIdx ? 'gap ' : '') + (tpSet.has(t) ? 'tp' : '') + (dealDelay(i) != null ? ' deal' : '')))
         .replace('<div class="tile', `<div data-i="${i}" class="tile`).replace('style="', dealDelay(i) != null ? `style="--dd:${dealDelay(i)}ms;` : 'style="')).join('')}</div>`;
@@ -1175,7 +1152,9 @@ let backKey = null;
 function setBackColor(D) {
   if (!D.commit || D.commit === backKey) return;
   backKey = D.commit;
-  document.documentElement.style.setProperty('--backx', ['75%', '87.5%', '100%'][parseInt(D.commit.slice(0, 8), 16) % 3]);
+  const c = parseInt(D.commit.slice(0, 8), 16) % 3;
+  document.documentElement.style.setProperty('--backx', ['75%', '87.5%', '100%'][c]);
+  document.documentElement.style.setProperty('--backc', ['#9c4043', '#4c865e', '#306a9c'][c]);   // 左右兩家側面的牌背色
 }
 function draw(D) {
   lastD = D;
@@ -2083,7 +2062,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 /* ================= 大廳 ================= */
 function clearTable() {
-  for (const id of ['seat0', 'seat1', 'seat2', 'seat3', 'river0', 'river1', 'river2', 'river3', 'mid']) $(id).innerHTML = '';
+  for (const id of ['seat0', 'seat1', 'seat2', 'seat3', 'river0', 'river1', 'river2', 'river3', 'mid', 'tmeta']) $(id).innerHTML = '';
   $('meta').textContent = ''; lastD = null;
   drawCallFx(null);
 }
@@ -2164,7 +2143,7 @@ $('optAuto').onchange = e => {
   else { if (G.auto) autoResolve(); render(); }
 };
 $('optSpeed').onchange = e => { G.speed = +e.target.value; };
-// 手機橫拿時的右上角選單
+// 右上角選單
 function setMenu(open) { document.body.classList.toggle('menu-open', open); $('btnMenu').setAttribute('aria-expanded', open); }
 $('btnMenu').onclick = e => { e.stopPropagation(); setMenu(!document.body.classList.contains('menu-open')); };
 document.addEventListener('click', e => {
