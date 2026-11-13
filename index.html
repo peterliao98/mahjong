@@ -212,7 +212,8 @@ body{background:radial-gradient(ellipse at 50% 45%,#2f8060 0%,#1d5a3f 42%,#0e302
   --rw:28px;--ow:26px;--mw:34px;
   --hw:min(72px, calc((var(--W,1280px) - 64px) / 17.5))}
 #table.many{--rw:24px}
-#tmeta{position:absolute;left:16px;top:12px;font-size:15px;line-height:1.5;color:var(--muted)}
+/* 局數與底台：放右上角（選單按鈕左邊） */
+#tmeta{position:absolute;right:120px;top:12px;text-align:right;font-size:15px;line-height:1.5;color:var(--muted)}
 #tmeta b{color:var(--text);font-size:17px}
 
 /* 牌河與方位盤 */
@@ -256,10 +257,14 @@ body{background:radial-gradient(ellipse at 50% 45%,#2f8060 0%,#1d5a3f 42%,#0e302
 .who .score::before{content:"";width:18px;height:18px;border-radius:50%;flex:none;
   background:radial-gradient(circle at 35% 35%,#fff0b0,#e2ab25 60%,#a8740f);box-shadow:inset 0 0 0 2px #c58f1a}
 
-/* 對家：花牌｜手牌（牌背）｜吃碰槓 排一行靠右，頭像在右邊 */
-.s2{left:calc(var(--cx) - 400px);top:4px;width:700px;height:60px;display:flex;justify-content:flex-end;align-items:flex-end}
-.s2 .who{position:absolute;left:712px;top:2px}
-.s2 .ot{display:flex;align-items:flex-end;gap:10px}
+/* 對家：頭像與分數在最左邊，接著是吃碰槓、手牌（牌背），從左邊固定的位置排起，摸牌打牌只有右端變長變短；
+   花牌放在這排下方、靠右、但避開摸牌那張（固定位置，不佔這一排的位置，所以不會推動別的牌） */
+.s2{left:calc(var(--cx) - 440px);top:0;width:880px;height:64px;display:flex;justify-content:flex-start;align-items:flex-end;gap:12px}
+.s2 .who{width:220px;flex:none;align-self:center}
+/* 對家與自己：資訊排兩行（風位、名字、莊｜分數），比較矮 */
+.s2 .head,.me .head{grid-template-columns:auto auto auto;justify-content:start}.s2 .head .dealer,.me .head .dealer{grid-column:auto}.s2 .head .score,.me .head .score{grid-column:1 / -1}
+.s2 .ot{position:relative;display:flex;align-items:flex-end;gap:10px;height:100%}
+.s2 .fl{position:absolute;left:0;top:calc(100% + 5px);width:calc(var(--ow) * 16 + 26px);justify-content:flex-end}
 .s2 .row{flex-wrap:nowrap;gap:1px}
 .s2 .tile{--tw:var(--ow)}
 .s2 .fl .tile{--tw:20px}
@@ -313,6 +318,7 @@ body{background:radial-gradient(ellipse at 50% 45%,#2f8060 0%,#1d5a3f 42%,#0e302
 .tiny .face{width:76px;height:76px;font-size:34px}
 .tiny .who .head{font-size:20px}.tiny .who .head b{font-size:24px}.tiny .who .score{font-size:22px}.tiny .who .wind{height:34px}
 .tiny .who .dealer{font-size:18px}
+.tiny .s2 .face{width:60px;height:60px;font-size:28px}.tiny .s2 .who .wind{height:28px}.tiny .s2 .who .head b{font-size:21px}.tiny .s2 .who .score{font-size:19px}
 .tiny .me .act{font-size:24px}
 .tiny .ting{font-size:21px}
 .tiny .cc small{font-size:14px}.tiny .cc b{font-size:34px}
@@ -966,10 +972,10 @@ function renderOpp(D, q) {
   const melds = D.reveal ? D.reveal[q].melds : D.v.melds[q], fls = D.v.flowers[q];
   const mts = m => m.type === 'ankong' ? (D.reveal ? [null, m.tiles[0], m.tiles[0], null] : [null, null, null, null]) : m.tiles;
   let ot;
-  if (k === 2) {   // 對家：花牌｜手牌（牌背）｜吃碰槓
+  if (k === 2) {   // 對家：吃碰槓｜手牌（牌背），花牌在這排下方靠右
     const hand = D.reveal ? D.reveal[q].hand.map(t => tileHTML(t)).join('') : Array.from({ length: n }, () => tileHTML(null)).join('');
-    ot = `<div class="row fl">${fls.map(f => tileHTML(f)).join('')}</div><div class="row hrow">${hand}</div>` +
-      `<div class="row md">${melds.map(m => meldHTML(m, !!D.reveal, '')).join('')}</div>`;
+    ot = `<div class="row fl">${fls.map(f => tileHTML(f)).join('')}</div>` +
+      `<div class="row md">${melds.map(m => meldHTML(m, !!D.reveal, '')).join('')}</div><div class="row hrow">${hand}</div>`;
   } else {         // 左右兩家：側面看過去的手牌（攤牌時改成橫躺的牌面）｜橫躺的吃碰槓與花牌
     const hand = D.reveal ? D.reveal[q].hand.map(t => rtHTML(t, k, 'rv')).join('') : '<i class="slab"></i>'.repeat(n);
     ot = `<div class="hcol">${hand}</div><div class="mcol">` +
