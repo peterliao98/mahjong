@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -27,7 +27,7 @@ body{margin:0;min-height:100vh;min-height:100dvh;color:var(--text);background:ra
   font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   /* 觸控：不要雙擊放大、點擊閃色、長按選字選單 */
-  touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  touch-action:pan-x pan-y;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .card code,.card textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 button,select{font:inherit}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 14px;background:rgba(0,0,0,.25)}
@@ -989,10 +989,11 @@ function renderOpp(D, q) {
   el.innerHTML = whoHTML(D, q) + `<div class="ot">${ot}</div>`;
 }
 /* 整張牌桌用固定的設計尺寸排好（高 720，寬依畫面比例在 1180～1600 之間），再等比例縮放塞進畫面 */
+// 用版面的大小（clientWidth/Height），不用看得到的範圍（innerWidth/Height）：手機雙指放大時後者會變，桌子會跟著亂縮放
 function fitStage() {
-  const cs = getComputedStyle(document.body);
-  const aw = innerWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  const ah = innerHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const cs = getComputedStyle(document.body), de = document.documentElement;
+  const aw = de.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const ah = de.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
   if (!(aw > 0 && ah > 0)) return;
   const W = Math.round(Math.min(1600, Math.max(1180, 720 * aw / ah)));
   const sc = Math.min(aw / W, ah / 720), r = document.documentElement;
@@ -1002,7 +1003,11 @@ function fitStage() {
 }
 queueMicrotask(fitStage);   // 等整段程式跑完（lastD 已宣告）再算
 addEventListener('resize', fitStage);
-if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+addEventListener('orientationchange', () => setTimeout(fitStage, 300));
+// 牌桌不需要放大（整張桌子已經塞滿畫面）：擋掉雙指縮放，以免誤觸放大後找不回原本的畫面
+// （Android 看 viewport 的 user-scalable=no 與 touch-action；iPhone Safari 會忽略這兩個，要擋 gesture 事件）
+for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 function renderRivers(D) {
   // 牌河每家留 4 排 × 11 張；有人超過 44 張時全部縮小一點
   $('table').classList.toggle('many', Math.max(...D.v.discards.map(d => d.length)) > 44);
