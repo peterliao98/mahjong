@@ -20,7 +20,7 @@
           ".read": "auth != null",
           "$i": {
             ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || data.child('uid').val() === auth.uid)",
-            ".validate": "$i.matches(/^[0-3]$/) && (!newData.exists() || newData.child('name').val().length <= 8)"
+            ".validate": "$i.matches(/^[0-3]$/) && (!newData.exists() || (newData.child('name').val().length <= 8 && (!newData.child('ava').exists() || (newData.child('ava').isNumber() && newData.child('ava').val() >= 0 && newData.child('ava').val() <= 11 && newData.child('ava').val() % 1 === 0))))"
           }
         },
         "online": {
@@ -45,7 +45,12 @@
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && auth.provider === 'password' && auth.token.email_verified === true"
+        ".write": "auth != null && auth.uid === $uid && auth.provider === 'password' && auth.token.email_verified === true",
+        "profile": {
+          "ava": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 11 && newData.val() % 1 === 0"
+          }
+        }
       }
     }
   }
