@@ -71,14 +71,6 @@ button,select{font:inherit}
   filter:drop-shadow(1px 0px 0 rgba(255,255,255,0)) drop-shadow(2px 0px 0 rgba(255,255,255,0)) drop-shadow(-1px 0px 0 rgba(255,255,255,0)) drop-shadow(-2px 0px 0 rgba(255,255,255,0)) drop-shadow(0px 1px 0 rgba(255,255,255,0)) drop-shadow(0px 2px 0 rgba(255,255,255,0)) drop-shadow(0px -1px 0 rgba(255,255,255,0)) drop-shadow(0px -2px 0 rgba(255,255,255,0)) drop-shadow(0 0 2px rgba(225,252,255,0)) drop-shadow(0 0 5px rgba(140,240,255,0)) drop-shadow(0 0 10px rgba(47,214,238,0)) drop-shadow(0 0 22px rgba(47,214,238,0))}   /* 平常：跟吃碰一樣，沒有白邊和光暈（層數跟下面一樣、全部透明，才能平順淡出） */
 .callfx.zap::after{filter:drop-shadow(1px 0px 0 rgba(255,255,255,1)) drop-shadow(2px 0px 0 rgba(255,255,255,1)) drop-shadow(-1px 0px 0 rgba(255,255,255,1)) drop-shadow(-2px 0px 0 rgba(255,255,255,1)) drop-shadow(0px 1px 0 rgba(255,255,255,1)) drop-shadow(0px 2px 0 rgba(255,255,255,1)) drop-shadow(0px -1px 0 rgba(255,255,255,1)) drop-shadow(0px -2px 0 rgba(255,255,255,1)) drop-shadow(0 0 2px rgba(225,252,255,1)) drop-shadow(0 0 5px rgba(140,240,255,1)) drop-shadow(0 0 10px rgba(47,214,238,1)) drop-shadow(0 0 22px rgba(47,214,238,1))}   /* 閃電打著的時候：先一圈約 3px 的純白實線（8 層不模糊的白影往四方各推 1、2px），外面再包跟閃電一樣的青色光暈 */
 .callfx.win .tile,.callfx.tsumo .tile{z-index:1}
-/* 胡、自摸：大字抖動 2 秒，幅度越來越小到停止（只抖字，不抖右邊那張牌）；--shd 讓中途才畫出來時跟上進度 */
-.callfx.win::after,.callfx.tsumo::after{animation:winshake 2s linear var(--shd, 0ms) forwards}
-@keyframes winshake{0%{transform:translate(0,0)}4%{transform:translate(-9px,4px) rotate(-3deg)}8%{transform:translate(8px,-5px) rotate(3deg)}
-  12%{transform:translate(-8px,-3px) rotate(-2.5deg)}16%{transform:translate(7px,4px) rotate(2.5deg)}22%{transform:translate(-6px,3px) rotate(-2deg)}
-  28%{transform:translate(6px,-3px) rotate(2deg)}35%{transform:translate(-5px,-2px) rotate(-1.5deg)}42%{transform:translate(4px,2px) rotate(1.2deg)}
-  50%{transform:translate(-3px,2px) rotate(-1deg)}58%{transform:translate(3px,-1px) rotate(.8deg)}67%{transform:translate(-2px,-1px) rotate(-.5deg)}
-  76%{transform:translate(1.5px,1px) rotate(.3deg)}86%{transform:translate(-1px,0) rotate(-.2deg)}94%{transform:translate(.5px,0)}100%{transform:translate(0,0)}}
-@media (prefers-reduced-motion:reduce){.callfx.win::after,.callfx.tsumo::after{animation:none}}
 /* 胡、自摸：閃電圖從畫面上方劈到大字，整個畫面閃光。
    大字（.callfx，z-index 15）在閃電上面 */
 .boltfx{position:fixed;inset:0;z-index:16;pointer-events:none}   /* 閃電在大字（.callfx，z-index 15）前面：直接劈在字上 */
@@ -1400,7 +1392,6 @@ function drawCallFx(D) {
     el.className = 'callfx ' + ({ chow: 'chow', pung: 'pung', win: 'win', tsumo: 'tsumo' }[c.type] || 'kong') + (hasTile ? '' : ' notile');
     el.innerHTML = txt;
     el.style.animationDelay = `-${Math.round(Math.max(0, age))}ms`;
-    el.style.setProperty('--shd', `-${Math.round(Math.max(0, age))}ms`);   // 胡／自摸大字抖動也從同一個進度接著播
     document.body.appendChild(el);
     clearTimeout(callT); callT = setTimeout(() => drawCallFx(lastD), CALLFX_MS - age + 50);   // 時間到拿掉
     fresh = isWin && age < 400;
