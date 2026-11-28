@@ -1355,13 +1355,13 @@ function callFx(p, type, tile, from) { S.callFx = { p, type, tile, from, t: NET.
 let callT = 0, callKey = null;
 // 胡牌：閃電圖從畫面上方劈在「胡／自摸」大字上，畫面閃光
 const BOLT_W = 720, BOLT_H = 900, BOLT_HX = 366, BOLT_HY = 676, BOLT_TOP = 127;   // 閃電圖的大小、尖端位置；BOLT_TOP：主幹最上端的高度
-function strikeFx(fx) {
+function strikeFx(fx, big = 1) {   // big：自己胡的時候 2，閃電跟大字一起放大一倍
   // 大字的中心：提示框以 left/top 為中心點；大字佔左邊 --fw 那段（右邊是那張牌）
   const fw = parseFloat(getComputedStyle(fx).getPropertyValue('--fw')) || 200, W = fx.offsetWidth;
   const wordW = fx.classList.contains('notile') ? W : W * fw / (fw + 81);
   const x1 = parseFloat(fx.style.left) - W / 2 + wordW / 2, y1 = parseFloat(fx.style.top);
   const yb = y1 + fx.offsetHeight * .46;                         // 閃電劈到大字的底線（留一點邊距避開字下面的陰影）
-  const k = 1.2 * Math.min(1.3, Math.max(.4, (yb + 20) / (BOLT_HY - BOLT_TOP)));   // 縮放：閃電主幹從畫面最上緣一路劈到大字底線（太小太大都夾住），再整體放大 1.2 倍（尖端位置不變）
+  const k = big * 1.2 * Math.min(1.3, Math.max(.4, (yb + 20) / (BOLT_HY - BOLT_TOP)));   // 縮放：閃電主幹從畫面最上緣一路劈到大字底線（太小太大都夾住），再整體放大 1.2 倍（尖端位置不變）
   const bs = `left:${x1 - k * BOLT_HX}px;top:${yb - k * BOLT_HY}px;width:${k * BOLT_W}px;height:${k * BOLT_H}px`;
   const bg = document.createElement('div'); bg.className = 'boltfx back';   // 大字後面那一層
   bg.style.setProperty('--bx', x1 + 'px'); bg.style.setProperty('--by', y1 + 'px');
@@ -1396,12 +1396,18 @@ function drawCallFx(D) {
     clearTimeout(callT); callT = setTimeout(() => drawCallFx(lastD), CALLFX_MS - age + 50);   // 時間到拿掉
     fresh = isWin && age < 400;
   }
+  // 自己胡／自摸：大字（連同閃電特效）放在畫面正中間、放大一倍
+  if (c.p === D.me) {
+    el.style.setProperty('--s', (2 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s')) || 1)).toFixed(4));
+    el.style.left = innerWidth / 2 + 'px'; el.style.top = innerHeight / 2 + 'px';
+  } else {
   // 放在那位對手座位的正中間；左右兩家欄位很窄，超出畫面時往內移
   const seat = $('seat' + ((c.p - D.me + 4) % 4)).getBoundingClientRect();
   const w = el.offsetWidth, h = el.offsetHeight, m = 8;
   el.style.left = Math.min(Math.max(seat.left + seat.width / 2, w / 2 + m), innerWidth - w / 2 - m) + 'px';
   el.style.top = Math.min(Math.max(seat.top + seat.height / 2, h / 2 + m), innerHeight - h / 2 - m) + 'px';
-  if (fresh) strikeFx(el);   // 剛胡的時候才打閃電（中途才收到畫面就不補播），等大字放好位置再打
+  }
+  if (fresh) strikeFx(el, c.p === D.me ? 2 : 1);   // 剛胡的時候才打閃電（中途才收到畫面就不補播），等大字放好位置再打
 }
 // 吃／碰沒成立時的說明（顯示 4 秒）
 const CALL = { chow: '吃', pung: '碰', kong: '槓', win: '胡' }, NOTICE_MS = 4000;
